@@ -11,27 +11,13 @@ mod remote_dropbox_mod;
 mod utils_mod;
 
 // export public code to the bin project
-pub use crate::app_state_mod::{AppStateTrait, APP_STATE};
+pub use crate::app_state_mod::{AppConfig, AppStateTrait, APP_STATE};
 pub use crate::error_mod::LibError;
+/* pub use crate::local_disk_mod::list_local; */
 pub use crate::remote_dropbox_mod::{encode_token, test_connection};
 
 #[allow(unused_imports)]
 use uncased::UncasedStr;
-
-pub struct AppConfig {
-    pub path_list_base_local_path: &'static str,
-    pub path_list_source_files: &'static str,
-    pub path_list_destination_files: &'static str,
-    pub path_list_source_folders: &'static str,
-    pub path_list_destination_folders: &'static str,
-    pub path_list_destination_readonly_files: &'static str,
-    pub path_list_for_download: &'static str,
-    pub path_list_for_trash: &'static str,
-    pub path_list_for_correct_time: &'static str,
-    pub path_list_just_downloaded_or_moved: &'static str,
-    pub path_list_for_trash_folders: &'static str,
-    pub path_list_for_create_folders: &'static str,
-}
 
 /*
 /// list and sync is the complete process for backup in one command

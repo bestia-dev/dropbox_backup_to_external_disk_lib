@@ -32,13 +32,6 @@ pub fn test_connection() -> Result<(), LibError> {
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
     let (master_key, token_enc) = APP_STATE.get().unwrap().lock().unwrap().load_keys_from_io()?;
-    let first_field = APP_STATE.get().unwrap().lock().unwrap().get_first_field();
-    dbg!(first_field);
-    APP_STATE.get().unwrap().lock().unwrap().set_first_field("aaa".to_string());
-
-    let first_field = APP_STATE.get().unwrap().lock().unwrap().get_first_field();
-    dbg!(first_field);
-
     let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Fernet master key is not correct."))?;
     let token = fernet.decrypt(&token_enc)?;
     let token = String::from_utf8(token)?;
@@ -225,7 +218,7 @@ pub fn sort_remote_list_folder_and_write_to_file(mut folder_list_all: Vec<String
 pub fn download_one_file(path_to_download: &str, app_config: &'static AppConfig) {
     let token = get_short_lived_access_token();
     let client = UserAuthDefaultClient::new(token);
-    let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
     // channel for inter-thread communication.
     let (tx, rx) = mpsc::channel();
@@ -369,7 +362,7 @@ fn download_internal(
 
 /// download files from list
 pub fn download_from_list(app_config: &'static AppConfig) {
-    let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     let list_for_download = fs::read_to_string(app_config.path_list_for_download).unwrap();
 
     if !list_for_download.is_empty() {
@@ -472,7 +465,7 @@ pub fn download_from_list(app_config: &'static AppConfig) {
             }
         }
         // delete the temp folder
-        let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+        let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
         let base_temp_download_path = format!("{}_temp_download", &base_local_path);
         fs::remove_dir_all(base_temp_download_path).unwrap_or(());
     } else {

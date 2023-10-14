@@ -2,7 +2,6 @@
 
 //! Module contains all functions for local external disk.
 
-/*
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
 use log::error;
@@ -13,6 +12,7 @@ use unwrap::unwrap;
 
 use crate::*;
 
+/*
 /// list all local files and folders. It can take some time.
 pub fn list_local(base_path: &str, app_config: &'static AppConfig) {
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
@@ -20,6 +20,8 @@ pub fn list_local(base_path: &str, app_config: &'static AppConfig) {
     save_base_path(base_path, app_config);
     list_local_internal(app_config);
 }
+
+
 
 /// list all local files and folders. It can take some time.
 fn list_local_internal(app_config: &'static AppConfig) {
@@ -42,7 +44,7 @@ fn list_local_internal(app_config: &'static AppConfig) {
     let mut readonly_files_string = String::new();
     let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
     use walkdir::WalkDir;
-    let base_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let base_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
 
     let mut folder_count = 0;
     let mut file_count = 0;
@@ -97,15 +99,6 @@ fn list_local_internal(app_config: &'static AppConfig) {
     file_list_destination_readonly_files.write_str(&readonly_files_sorted_string).unwrap();
 }
 
-/// saves the base local path for later use like "/mnt/d/DropBoxBackup1"
-pub fn save_base_path(base_path: &str, app_config: &'static AppConfig) {
-    if !path::Path::new(base_path).exists() {
-        println!("error: base_path not exists {}", base_path);
-        std::process::exit(1);
-    }
-    fs::write(app_config.path_list_base_local_path, base_path).unwrap();
-}
-
 fn get_content_hash(path_for_download: &str) -> String {
     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
@@ -119,7 +112,7 @@ fn get_content_hash(path_for_download: &str) -> String {
 /// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.
 /// Remove also the lines in files list_for_trash and list_for_download.
 pub fn move_or_rename_local_files(app_config: &'static AppConfig) {
-    let to_base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let to_base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     /*     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token); */
     move_or_rename_local_files_internal(
@@ -225,7 +218,7 @@ fn move_internal(path_global_path_to_trash: &path::Path, to_base_local_path: &st
 /// Move to trash folder the files from list_for_trash.
 /// Ignore if the file does not exist anymore.
 pub fn trash_from_list(app_config: &'static AppConfig) {
-    let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     let path_list_local_files = app_config.path_list_destination_files;
     trash_from_list_internal(&base_local_path, app_config.path_list_for_trash, path_list_local_files);
 }
@@ -284,7 +277,7 @@ pub fn trash_from_list_internal(base_local_path: &str, path_list_for_trash: &str
 pub fn correct_time_from_list(app_config: &'static AppConfig) {
     /*     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token); */
-    let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
+    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     correct_time_from_list_internal(&base_local_path, app_config.path_list_for_correct_time);
 }
 

@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "dropbox_backup_to_external_disk_lib"
-version = "2023.1014.1236"
+version = "2.1.6"
 dependencies = [
  "anyhow",
  "chrono",
