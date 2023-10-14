@@ -1,11 +1,11 @@
 [//]: # (auto_md_to_doc_comments segment start A)
 
-# dropbox_backup_to_external_disk_2
+# dropbox_backup_to_external_disk_lib
 
 [//]: # (auto_cargo_toml_to_md start)
 
 **TUI and CLI, one way sync from dropbox to external disc**  
-***version: 2023.820.1613 date: 2023-08-20 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)***  
+***version: 2023.820.1613 date: 2023-08-20 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
 
 [//]: # (auto_cargo_toml_to_md end)
 
@@ -13,16 +13,16 @@
 ![status](https://img.shields.io/badge/work_in_progress-yellow) 
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1549-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
-[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-280-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-182-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
-[![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
-[![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1549-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-280-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-182-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
 [//]: # (auto_lines_of_code end)
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/blob/main/LICENSE)
-[![Rust](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/workflows/RustAction/badge.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/blob/main/LICENSE)
+[![Rust](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/workflows/RustAction/badge.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 ![Hits](https://bestia.dev/webpage_hit_counter/get_svg_image/584868797.svg)
 
 Hashtags: #rustlang #tutorial #dropbox #cli #tui  
@@ -51,14 +51,14 @@ The dropbox remote storage will always be read_only, nothing will be modified th
 There are a few manual steps for the security of you files on Dropbox. Authentication on internet is a complex topic.  
 You should be logged in Linux terminal (also in WSL2) with your account. So things you do in that session, are not visible to others. You will set some local environment variables that are private/secret to your linux Session.  After you logout from you Linux session these local environment variables will be deleted.  
 The executable will create a sub-directory `temp_data` in the current directory. Maybe it is best if you create a dedicated directory `~/dropbox_backup_to_external_disk/` just for this executable and temp_data.
-Download the latest release from [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/releases) and make the file executable and enable auto-completion:
+Download the latest release from [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/releases) and make the file executable and enable auto-completion:
 
 ```bash
 cd ~
 mkdir dropbox_backup_to_external_disk
 cd dropbox_backup_to_external_disk
 
-curl -L https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/releases/latest/download/dropbox_backup_to_external_disk --output dropbox_backup_to_external_disk
+curl -L https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/releases/latest/download/dropbox_backup_to_external_disk --output dropbox_backup_to_external_disk
 
 chmod +x dropbox_backup_to_external_disk
 alias dropbox_backup_to_external_disk=./dropbox_backup_to_external_disk
@@ -122,7 +122,7 @@ For commercial programs they probably embed them into the binary code somehow. B
 `$ dropbox_backup_to_external_disk --help`  
 has the detailed instructions.  
 Then every time before use we need generate the "short-lived access token" for security reasons. There is the possibility to choose "no expiration" token, but I don't like it. Dropbox backup is used rarely and it is not super frustrating to make few clicks for security of your precious files. Having a "no expiration" token is like having another password for the hackers to try to hack. I like more the "short-lived" token. When I'm not using this backup program, there is no access token at all.  
-![dropbox_2](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/raw/main/images/dropbox_2.png "dropbox_2") ![dropbox_1](https://github.com/bestia-dev/dropbox_backup_to_external_disk_2/raw/main/images/dropbox_1.png "dropbox_1")
+![dropbox_2](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/raw/main/images/dropbox_2.png "dropbox_2") ![dropbox_1](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/raw/main/images/dropbox_1.png "dropbox_1")
 Use this command to store the token (encrypted) in env variable. It will ask for your interactive input like a secret password.
 
 ```bash
