@@ -23,8 +23,8 @@ pub fn encode_token(token: String) -> Result<(String, String), LibError> {
 /// experiment with sending function pointer
 pub fn test_connection() -> Result<(), LibError> {
     let token = get_authorization_token()?;
-    //let client = UserAuthDefaultClient::new(token);
-    //(files::list_folder(&client, &files::ListFolderArg::new("".to_string()))?)?;
+    let client = UserAuthDefaultClient::new(token);
+    (files::list_folder(&client, &files::ListFolderArg::new("".to_string()))?)?;
     Ok(())
 }
 
