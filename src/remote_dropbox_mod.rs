@@ -1,4 +1,4 @@
-// remote_mod.rs
+// remote_dropbox_mod.rs
 
 //! Module contains all the communication with the remote dropbox storage.
 

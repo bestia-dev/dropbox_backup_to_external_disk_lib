@@ -1,7 +1,6 @@
-//! automation_tasks_rs for dropbox_backup_to_external_disk
+//! automation_tasks_rs for dropbox_backup_to_external_disk_lib
 
 use cargo_auto_lib::*;
-use cargo_auto_github_lib::*;
 
 // ANSI colors for Linux terminal
 // https://github.com/shiena/ansicolor/blob/master/README.md
@@ -49,8 +48,6 @@ fn match_arguments_and_call_tasks(mut args: std::env::Args) {
                 } else if &task == "commit_and_push" {
                     let arg_2 = args.next();
                     task_commit_and_push(arg_2);
-                } else if &task == "github_new_release" {
-                    task_github_new_release();
                 } else {
                     println!("{RED}Error: Task {task} is unknown.{RESET}");
                     print_help();
@@ -74,9 +71,6 @@ fn print_help() {
 {GREEN}cargo auto test{RESET}{YELLOW} - runs all the tests{RESET}
 {GREEN}cargo auto commit_and_push "message"{RESET}{YELLOW} - commits with message and push with mandatory message
     (If you use SSH, it is easy to start the ssh-agent in the background and ssh-add your credentials for git.){RESET}
-{GREEN}cargo auto github_new_release{RESET}{YELLOW} - creates new release on github
-    This task needs PAT (personal access token from github) in the env variable:{RESET}
-{GREEN} export GITHUB_TOKEN=paste_token_here{RESET}
 
     {YELLOW}© 2023 bestia.dev  MIT License github.com/bestia-dev/cargo-auto{RESET}
 "#
@@ -100,7 +94,7 @@ fn completion() {
     let last_word = args[3].as_str();
 
     if last_word == "cargo-auto" || last_word == "auto" {
-        let sub_commands = vec!["build", "release", "doc", "test", "commit_and_push", "github_new_release"];
+        let sub_commands = vec!["build", "release", "doc", "test", "commit_and_push"];
         completion_return_one_or_more_sub_commands(sub_commands, word_being_completed);
     }
     /*
@@ -118,22 +112,15 @@ fn completion() {
 
 /// cargo build
 fn task_build() {
-    let cargo_toml = CargoToml::read();
+    //let cargo_toml = CargoToml::read();
     auto_version_increment_semver_or_date();
     run_shell_command("cargo fmt");
     run_shell_command("cargo build");
     println!(
         r#"
-    {YELLOW}After `cargo auto build`, run the compiled binary, examples and/or tests{RESET}
-    {YELLOW}Create auto-completion (only once):{RESET}
-{GREEN}alias dropbox_backup_to_external_disk=./target/debug/{package_name}{RESET}
-{GREEN}complete -C "{package_name} completion" {package_name}{RESET}
-    {YELLOW}Execute binary:{RESET}
-{GREEN}{package_name} --help{RESET}
-    {YELLOW}if ok, then,{RESET}
+    {YELLOW}After `cargo auto build`, run the project for the binary, examples and/or tests{RESET}
 {GREEN}cargo auto release{RESET}
     {YELLOW}{RESET}"#,
-package_name = cargo_toml.package_name(),
     );
     print_examples_cmd();
 }
@@ -153,16 +140,9 @@ fn task_release() {
     ));
     println!(
         r#"
-    {YELLOW}After `cargo auto release`, run the compiled binary, examples and/or tests{RESET}
-    {YELLOW}Create auto-completion (only once):{RESET}
-{GREEN}alias dropbox_backup_to_external_disk=./target/release/{package_name}{RESET}
-{GREEN}complete -C "{package_name} completion" {package_name}{RESET}
-    {YELLOW}Execute binary:{RESET}
-{GREEN}{package_name} --help{RESET}
-    {YELLOW}if ok, then,{RESET}
+    {YELLOW}After `cargo auto release`, run the project for the binary, examples and/or tests{RESET}
 {GREEN}cargo auto doc{RESET}
     {YELLOW}{RESET}"#,
-package_name = cargo_toml.package_name(),
     );
     print_examples_cmd();
 }
@@ -213,57 +193,10 @@ fn task_commit_and_push(arg_2: Option<String>) {
             run_shell_command(&format!(r#"git add -A && git commit --allow-empty -m "{}""#, message));
             run_shell_command("git push");
             println!(
-                r#"
-    {YELLOW}After `cargo auto commit_and_push "message"`{RESET}
-{GREEN}cargo auto github_new_release{RESET}
-    {YELLOW}{RESET}"#
+                r#""#
             );
         }
     }
 }
 
-/// create a new release on github
-fn task_github_new_release() {
-    let cargo_toml = CargoToml::read();
-    println!("    {YELLOW}The env variable GITHUB_TOKEN must be set:  export GITHUB_TOKEN=paste_token_here{RESET}");
-
-    // git tag
-    let shell_command = format!(
-        "git tag -f -a v{version} -m version_{version}",
-        version = cargo_toml.package_version()
-    );
-    run_shell_command(&shell_command);
-
-    // async block inside sync code with tokio
-    use tokio::runtime::Runtime;
-    let rt = Runtime::new().unwrap();
-    rt.block_on(async move {
-        let owner = cargo_auto_github_lib::github_owner();
-        let repo_name = cargo_toml.package_name();
-        let tag_name_version = format!("v{}", cargo_toml.package_version());
-        let release_name = format!("Release v{}", cargo_toml.package_version());
-        let branch = "main";
-
-        let body_md_text = &format!(
-r#"## Changed
-
-- edit the list of changes
-
-"#);
-
-        let release_id =  auto_github_create_new_release(&owner, &repo_name, &tag_name_version, &release_name, branch, body_md_text).await;
-        println!("    {YELLOW}New release created, now uploading release asset. This can take some time if the files are big. Wait...{RESET}");
-
-        // compress files tar.gz
-        let tar_name = format!("{repo_name}-{tag_name_version}-x86_64-unknown-linux-gnu.tar.gz");
-        run_shell_command(&format!("tar -zcvf {tar_name} target/release/{repo_name}"));
-        
-        // upload asset     
-        auto_github_upload_asset_to_release(&owner, &repo_name, &release_id, &tar_name).await;
-        run_shell_command(&format!("rm {tar_name}"));  
-
-        println!("    {YELLOW}Asset uploaded. Open and edit the description on Github-Releases in the browser.{RESET}");
-        println!("{GREEN}https://github.com/{owner}/{repo_name}/releases{RESET}");
-    });
-}
 // endregion: tasks

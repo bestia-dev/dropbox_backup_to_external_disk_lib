@@ -1,4 +1,4 @@
-// local_mod.rs
+// local_disk_mod.rs
 
 //! Module contains all functions for local external disk.
 
@@ -107,9 +107,9 @@ pub fn save_base_path(base_path: &str, app_config: &'static AppConfig) {
 }
 
 fn get_content_hash(path_for_download: &str) -> String {
-    let token = crate::remote_mod::get_short_lived_access_token();
+    let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    unwrap!(crate::remote_mod::remote_content_hash(path_for_download, &client))
+    unwrap!(crate::remote_dropbox_mod::remote_content_hash(path_for_download, &client))
 }
 
 /// Files are often moved or renamed
@@ -120,7 +120,7 @@ fn get_content_hash(path_for_download: &str) -> String {
 /// Remove also the lines in files list_for_trash and list_for_download.
 pub fn move_or_rename_local_files(app_config: &'static AppConfig) {
     let to_base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
-    /*     let token = crate::remote_mod::get_short_lived_access_token();
+    /*     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token); */
     move_or_rename_local_files_internal(
         &to_base_local_path,
@@ -282,7 +282,7 @@ pub fn trash_from_list_internal(base_local_path: &str, path_list_for_trash: &str
 
 /// modify the date od files from list_for_correct_time
 pub fn correct_time_from_list(app_config: &'static AppConfig) {
-    /*     let token = crate::remote_mod::get_short_lived_access_token();
+    /*     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token); */
     let base_local_path = fs::read_to_string(app_config.path_list_base_local_path).unwrap();
     correct_time_from_list_internal(&base_local_path, app_config.path_list_for_correct_time);

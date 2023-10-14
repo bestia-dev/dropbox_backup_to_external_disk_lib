@@ -1,13 +1,13 @@
 [package]
-name = "dropbox_backup_to_external_disk"
-version = "2023.928.1539"
+name = "dropbox_backup_to_external_disk_lib"
+version = "2023.1014.1236"
 description = "One way sync from dropbox to external disc"
 authors = ["bestia.dev"]
 homepage = "https://bestia.dev"
 edition = "2021"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/bestia-dev/dropbox_backup_to_external_disk/"
+repository = "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"
 categories = ["programming"]
 keywords = ["dropbox"]
 publish = false

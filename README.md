@@ -46,48 +46,11 @@ I have a lot of files, so I want to list them first - remote and local. Then com
 Obsolete files will "move to trash folder", so I can inspect what and how to delete manually.  
 The dropbox remote storage will always be read_only, nothing will be modified there, never, no permission for that.  
 
-## Try it
-
-There are a few manual steps for the security of you files on Dropbox. Authentication on internet is a complex topic.  
-You should be logged in Linux terminal (also in WSL2) with your account. So things you do in that session, are not visible to others. You will set some local environment variables that are private/secret to your linux Session.  After you logout from you Linux session these local environment variables will be deleted.  
-The executable will create a sub-directory `temp_data` in the current directory. Maybe it is best if you create a dedicated directory `~/dropbox_backup_to_external_disk/` just for this executable and temp_data.
-Download the latest release from [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/releases) and make the file executable and enable auto-completion:
-
-```bash
-cd ~
-mkdir dropbox_backup_to_external_disk
-cd dropbox_backup_to_external_disk
-
-curl -L https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/releases/latest/download/dropbox_backup_to_external_disk --output dropbox_backup_to_external_disk
-
-chmod +x dropbox_backup_to_external_disk
-alias dropbox_backup_to_external_disk=./dropbox_backup_to_external_disk
-complete -C "dropbox_backup_to_external_disk completion" dropbox_backup_to_external_disk
-
-dropbox_backup_to_external_disk
-```
-
-Run the executable without arguments and follow carefully the instructions.  
-
-## Warning
-
-I don't know why, but WSL2 sometimes does not see all the folders of the external disk.  
-Instead of 12.000 folders it sees only 28 ???  
-Be careful !  
-Check it first with this commands to see if the removable disk is really mounted or you see a phantom cached file system.  
-
-```bash
-ls /mnt/d
-# and/or
-df
-```
-
-I then restart my Win10 and the problem magically disappears.
-
 ## Development
 
 I develop in my container image for Rust development inside WSL2 Debian Linux inside Win10. All this is described in my project [docker_rust_development](https://github.com/bestia-dev/docker_rust_development).  
 I use [cargo-auto](https://crates.io/crates/cargo-auto) for automation tasks in Rust language.  
+This is just a library project. There are projects for different user-interfaces that depend on this library. Compile and run them to test the application.  
 
 Then I use WSL2 (Debian) on Win10 to execute the compiled program.  
 The external disk path from WSL2 looks like this: `/mnt/d/DropBoxBackup1`.  
@@ -114,39 +77,12 @@ Dropbox has made a `Stone` thingy that contains all the API definition. From the
 For Rust there is this quasi official project:  
 <https://crates.io/crates/dropbox-sdk>  
 
-## Authorization OAuth2
-
-Authorization on the internet is a mess. Dropbox api uses OAuth2.
-Every app must be authorized on Dropbox and have its own `app key` and `app secret`.  
-For commercial programs they probably embed them into the binary code somehow. But for OpenSource projects it is not possible to keep a secret. So the workaround is: every user must create its own new `dropbox app` exclusive only to him. Creating a new app is simple. This app will stay forever in `development status` in dropbox, to be more private and secure. The  
-`$ dropbox_backup_to_external_disk --help`  
-has the detailed instructions.  
-Then every time before use we need generate the "short-lived access token" for security reasons. There is the possibility to choose "no expiration" token, but I don't like it. Dropbox backup is used rarely and it is not super frustrating to make few clicks for security of your precious files. Having a "no expiration" token is like having another password for the hackers to try to hack. I like more the "short-lived" token. When I'm not using this backup program, there is no access token at all.  
-![dropbox_2](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/raw/main/images/dropbox_2.png "dropbox_2") ![dropbox_1](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/raw/main/images/dropbox_1.png "dropbox_1")
-Use this command to store the token (encrypted) in env variable. It will ask for your interactive input like a secret password.
-
-```bash
-dropbox_backup_to_external_disk encode_token
-```
-
 ## rename or move
 
 Often a file is renamed or moved to another folder.  
 I can try to recognize if there is the same file in list_for_trash and list_for_download.  
 If the name, size and file date are equal then they are probably the same file.  
 If the name is different, then try if content_hash is equal, but that is slow.  
-
-## bash auto-completion
-
-This executable is prepared for auto-completion in bash.  
-Run this command to define auto-completion in bash for the current session:  
-
-```bash
-alias dropbox_backup_to_external_disk=./dropbox_backup_to_external_disk
-complete -C "dropbox_backup_to_external_disk completion" dropbox_backup_to_external_disk
-```
-
-To make it permanent add this command to the file `~/.bashrc` or some other file that runs commands on bash initialization.  
 
 ## Learn something new every day
 
@@ -162,11 +98,6 @@ Simple text files are a terrible way to store data that needs to be changed. It 
 There is another approach called memory map to file, but everybody is trying to avoid it because some other process could modify the file when in use and make it garbage.  
 Sounds like a database is always a better choice for more agile development.  
 In this project I will create additional files that only append lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded_or_moved.csv is added to list_destination_files.csv.  
-
-### termion
-
-After using some small crates to help me with Linux tty terminal ansi codes, I am happy to finally use only the `termion` crate.  
-It has all I need.  
 
 ### how to invert black-white in paint.net for dark theme
 
