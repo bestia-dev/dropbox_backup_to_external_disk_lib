@@ -31,7 +31,8 @@ pub fn test_connection() -> Result<(), LibError> {
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    let (master_key, token_enc) = APP_STATE.get().unwrap().lock().unwrap().load_keys_from_io()?;
+    //let (master_key, token_enc) = APP_STATE.get().unwrap().lock().unwrap().load_keys_from_io()?;
+    let (master_key, token_enc) = APP_STATE.get().expect("OnceCell").load_keys_from_io()?;
     let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Fernet master key is not correct."))?;
     let token = fernet.decrypt(&token_enc)?;
     let token = String::from_utf8(token)?;

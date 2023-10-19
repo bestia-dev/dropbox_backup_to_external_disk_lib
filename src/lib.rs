@@ -12,7 +12,7 @@ mod remote_dropbox_mod;
 mod utils_mod;
 
 // export public code to the bin project
-pub use crate::app_state_mod::{AppConfig, AppStateTrait, APP_STATE};
+pub use crate::app_state_mod::{AppConfig, AppStateMethods, APP_STATE,global_app_state, global_config};
 pub use crate::error_mod::LibError;
 pub use crate::file_txt_mod::FileTxt;
 /* pub use crate::local_disk_mod::list_local; */
