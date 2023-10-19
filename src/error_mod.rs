@@ -15,6 +15,9 @@ pub enum LibError {
     #[error("IoError: {0}")]
     IoError(#[from] std::io::Error),
 
+    #[error("WalkdirError: {0}")]
+    WalkdirError(#[from] walkdir::Error),
+
     #[error("SerdeJsonError: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
 

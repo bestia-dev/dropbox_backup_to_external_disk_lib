@@ -2,6 +2,8 @@
 
 //! A module with often used functions.
 
+use uncased::UncasedStr;
+
 /*
 use std::io::Read;
 use std::io::Stdout;
@@ -11,7 +13,7 @@ use chrono::prelude::*;
 use chrono::Duration;
 use lazy_static::lazy_static;
 use termion::raw::RawTerminal;
-use uncased::UncasedStr;
+
 use unwrap::unwrap;
 
 
@@ -38,38 +40,6 @@ pub fn start_hide_cursor_terminal() -> termion::cursor::HideCursor<RawTerminal<S
     hide_cursor
 }
 
-/// sort string lines case insensitive
-pub fn sort_string_lines(output_string: &str) -> String {
-    let mut sorted_local: Vec<&str> = output_string.lines().collect();
-    use rayon::prelude::*;
-    sorted_local.par_sort_unstable_by(|a, b| {
-        let aa: &UncasedStr = (*a).into();
-        let bb: &UncasedStr = (*b).into();
-        aa.cmp(bb)
-    });
-
-    let joined = sorted_local.join("\n");
-    // return
-    joined
-}
-
-/// shorten path for screen to avoid word-wrap
-pub fn shorten_string(text: &str, x_max_char: u16) -> String {
-    if text.chars().count() > x_max_char as usize {
-        let x_half_in_char = (x_max_char / 2 - 2) as usize;
-        let pos1_in_bytes = byte_pos_from_chars(text, x_half_in_char);
-        let pos2_in_bytes = byte_pos_from_chars(text, text.chars().count() - x_half_in_char);
-        return format!("{}...{}", &text[..pos1_in_bytes], &text[pos2_in_bytes..]);
-    } else {
-        return text.to_string();
-    }
-}
-
-/// it is used for substring, because string slice are counted in bytes and not chars.
-/// if we have multi-byte unicode characters we can get an error if the boundary is not on char boundary.
-pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> usize {
-    text.char_indices().nth(char_pos).unwrap().0
-}
 
 use std::io::Write;
 use std::thread;
@@ -154,3 +124,36 @@ pub fn press_enter_to_continue_timeout_5_sec() {
     println!("");
 }
  */
+
+/// shorten path for screen to avoid word-wrap
+pub fn shorten_string(text: &str, x_max_char: u16) -> String {
+    if text.chars().count() > x_max_char as usize {
+        let x_half_in_char = (x_max_char / 2 - 2) as usize;
+        let pos1_in_bytes = byte_pos_from_chars(text, x_half_in_char);
+        let pos2_in_bytes = byte_pos_from_chars(text, text.chars().count() - x_half_in_char);
+        return format!("{}...{}", &text[..pos1_in_bytes], &text[pos2_in_bytes..]);
+    } else {
+        return text.to_string();
+    }
+}
+
+/// it is used for substring, because string slice are counted in bytes and not chars.
+/// if we have multi-byte unicode characters we can get an error if the boundary is not on char boundary.
+pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> usize {
+    text.char_indices().nth(char_pos).unwrap().0
+}
+
+/// sort string lines case insensitive
+pub fn sort_string_lines(output_string: &str) -> String {
+    let mut sorted_local: Vec<&str> = output_string.lines().collect();
+    use rayon::prelude::*;
+    sorted_local.par_sort_unstable_by(|a, b| {
+        let aa: &UncasedStr = (*a).into();
+        let bb: &UncasedStr = (*b).into();
+        aa.cmp(bb)
+    });
+
+    let joined = sorted_local.join("\n");
+    // return
+    joined
+}

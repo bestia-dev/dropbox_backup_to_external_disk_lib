@@ -12,11 +12,12 @@ mod remote_dropbox_mod;
 mod utils_mod;
 
 // export public code to the bin project
-pub use crate::app_state_mod::{AppConfig, AppStateMethods, APP_STATE,global_app_state, global_config};
+pub use crate::app_state_mod::{global_app_state, global_config, AppConfig, AppStateMethods, APP_STATE};
 pub use crate::error_mod::LibError;
 pub use crate::file_txt_mod::FileTxt;
-/* pub use crate::local_disk_mod::list_local; */
+pub use crate::local_disk_mod::list_local;
 pub use crate::remote_dropbox_mod::{encode_token, test_connection};
+pub use crate::utils_mod::{shorten_string, sort_string_lines};
 
 #[allow(unused_imports)]
 use uncased::UncasedStr;

@@ -36,7 +36,7 @@ pub trait AppStateMethods: Sync + Send {
 /// Read more: https://www.sitepoint.com/rust-global-variables/  
 /// I will use Multi-threaded Global Variable with Runtime Initialization and Interior Mutability, the most complicated and usable one.  
 /// All fields are private. Only the methods can be used globally.  
-/// Example how to use it: 
+/// Example how to use it:
 /// fn global_app_state() -> &'static Box<dyn lib::AppStateMethods> {
 ///     lib::APP_STATE.get().expect("OnceCell must not be empty.")
 /// }

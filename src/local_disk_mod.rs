@@ -4,67 +4,55 @@
 
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
-use log::error;
+
+/* use log::error;
 use std::io::Write;
 use std::path;
 use uncased::UncasedStr;
-use unwrap::unwrap;
+use unwrap::unwrap; */
 
 use crate::*;
 
-/*
-/// list all local files and folders. It can take some time.
-pub fn list_local(base_path: &str, app_config: &'static AppConfig) {
+/// the logic is in the LIB project, but all UI is in the CLI project
+/// they run on different threads and communicate
+/// It uses the global APP_STATE for all config data
+pub fn list_local(tx1: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
+    let mut file_list_destination_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_destination_files)?;
+    file_list_destination_files.empty()?;
+    let mut file_list_destination_folders = crate::FileTxt::open_for_read_and_write(global_config().path_list_destination_folders)?;
+    file_list_destination_folders.empty()?;
+    let mut file_list_destination_readonly_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_destination_readonly_files)?;
+    file_list_destination_readonly_files.empty()?;
     // just_loaded is obsolete once I got the fresh local list
-    save_base_path(base_path, app_config);
-    list_local_internal(app_config);
-}
+    let mut file_list_just_downloaded_or_moved = crate::FileTxt::open_for_read_and_write(global_config().path_list_just_downloaded_or_moved)?;
+    file_list_just_downloaded_or_moved.empty()?;
 
-
-
-/// list all local files and folders. It can take some time.
-fn list_local_internal(app_config: &'static AppConfig) {
-    // empty the file. I want all or nothing result here if the process is terminated prematurely.
-
-    let mut file_list_destination_files = FileTxt::open_for_read_and_write(app_config.path_list_destination_files).unwrap();
-    file_list_destination_files.empty().unwrap();
-    let mut file_list_destination_folders = FileTxt::open_for_read_and_write(app_config.path_list_destination_folders).unwrap();
-    file_list_destination_folders.empty().unwrap();
-    let mut file_list_destination_readonly_files = FileTxt::open_for_read_and_write(app_config.path_list_destination_readonly_files).unwrap();
-    file_list_destination_readonly_files.empty().unwrap();
-
-    // just_loaded is obsolete once I got the fresh local list
-    let mut file_list_just_downloaded_or_moved = FileTxt::open_for_read_and_write(app_config.path_list_just_downloaded_or_moved).unwrap();
-    file_list_just_downloaded_or_moved.empty().unwrap();
-
-    // write data to a big string in memory (for my use-case it is 25 MB)
-    let mut files_string = String::with_capacity(26_214_400);
+    // write data to a big string in memory (for my use-case it is >25 MB)
+    let mut files_string = String::with_capacity(40_000_000);
     let mut folders_string = String::new();
     let mut readonly_files_string = String::new();
-    let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
     use walkdir::WalkDir;
-    let base_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
+    let base_path = std::fs::read_to_string(global_config().path_list_ext_disk_base_path)?;
+    dbg!(&base_path);
 
     let mut folder_count = 0;
     let mut file_count = 0;
     let mut last_print_ms = std::time::Instant::now();
     for entry in WalkDir::new(&base_path) {
         //let mut ns_started = ns_start("WalkDir entry start");
-        let entry: walkdir::DirEntry = entry.unwrap();
+        let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
-        let str_path = unwrap!(path.to_str());
+        let str_path = path.to_str().ok_or_else(|| LibError::ErrorFromStr("string is not path"))?;
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
             // I don't need the "base" folder in this list
             if !str_path.trim_start_matches(&base_path).is_empty() {
                 folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
                 // TODO: don't print every folder, because print is slow. Check if 200ms passed
-                if last_print_ms.elapsed().as_millis() >= 200 {
-                    println!("{}{}Folder: {}", at_line(13), *CLEAR_LINE, shorten_string(str_path.trim_start_matches(&base_path), x_screen_len - 9),);
-                    println!("{}{}local_folder_count: {}", at_line(14), *CLEAR_LINE, folder_count);
-                    // it would be too much too print count for every single file
-                    println!("{}{}local_file_count: {}", at_line(15), *CLEAR_LINE, file_count);
+                if last_print_ms.elapsed().as_millis() >= 100 {
+                    tx1.send(format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80))).unwrap();
+
                     last_print_ms = std::time::Instant::now();
                 }
                 folder_count += 1;
@@ -77,7 +65,7 @@ fn list_local_internal(app_config: &'static AppConfig) {
                 //ns_started = ns_print("metadata end", ns_started);
                 use chrono::offset::Utc;
                 use chrono::DateTime;
-                let datetime: DateTime<Utc> = unwrap!(metadata.modified()).into();
+                let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
 
                 if metadata.permissions().readonly() {
                     readonly_files_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
@@ -87,18 +75,22 @@ fn list_local_internal(app_config: &'static AppConfig) {
                 file_count += 1;
             }
         }
-        //ns_print("WalkDir entry end", ns_started);
     }
+    println!("local_folder_count: {folder_count}");
+
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
     let folders_sorted_string = crate::sort_string_lines(&folders_string);
     let readonly_files_sorted_string = crate::sort_string_lines(&readonly_files_string);
     // end region: sort
-    file_list_destination_files.write_str(&files_sorted_string).unwrap();
-    file_list_destination_folders.write_str(&folders_sorted_string).unwrap();
-    file_list_destination_readonly_files.write_str(&readonly_files_sorted_string).unwrap();
+    file_list_destination_files.write_str(&files_sorted_string)?;
+    file_list_destination_folders.write_str(&folders_sorted_string)?;
+    file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
+
+    Ok(())
 }
 
+/*
 fn get_content_hash(path_for_download: &str) -> String {
     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
