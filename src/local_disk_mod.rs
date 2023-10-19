@@ -34,11 +34,10 @@ pub fn list_local(tx1: std::sync::mpsc::Sender<String>) -> Result<(), LibError> 
     let mut readonly_files_string = String::new();
     use walkdir::WalkDir;
     let base_path = std::fs::read_to_string(global_config().path_list_ext_disk_base_path)?;
-    dbg!(&base_path);
 
     let mut folder_count = 0;
     let mut file_count = 0;
-    let mut last_print_ms = std::time::Instant::now();
+    let mut last_send_ms = std::time::Instant::now();
     for entry in WalkDir::new(&base_path) {
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
@@ -49,20 +48,19 @@ pub fn list_local(tx1: std::sync::mpsc::Sender<String>) -> Result<(), LibError> 
             // I don't need the "base" folder in this list
             if !str_path.trim_start_matches(&base_path).is_empty() {
                 folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
-                // TODO: don't print every folder, because print is slow. Check if 200ms passed
-                if last_print_ms.elapsed().as_millis() >= 100 {
-                    tx1.send(format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80))).unwrap();
+                // TODO: don't print every folder, because print is slow. Check if 100ms passed
+                if last_send_ms.elapsed().as_millis() >= 100 {
+                    tx1.send(format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)))
+                        .expect("mpsc send");
 
-                    last_print_ms = std::time::Instant::now();
+                    last_send_ms = std::time::Instant::now();
                 }
                 folder_count += 1;
             }
         } else {
             // write csv tab delimited
             // metadata() in wsl/Linux is slow. Nothing to do here.
-            //ns_started = ns_print("metadata start", ns_started);
             if let Ok(metadata) = entry.metadata() {
-                //ns_started = ns_print("metadata end", ns_started);
                 use chrono::offset::Utc;
                 use chrono::DateTime;
                 let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
@@ -76,7 +74,8 @@ pub fn list_local(tx1: std::sync::mpsc::Sender<String>) -> Result<(), LibError> 
             }
         }
     }
-    println!("local_folder_count: {folder_count}");
+
+    tx1.send(format!("local_folder_count: {folder_count}")).expect("mpsc send");
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -86,6 +85,8 @@ pub fn list_local(tx1: std::sync::mpsc::Sender<String>) -> Result<(), LibError> 
     file_list_destination_files.write_str(&files_sorted_string)?;
     file_list_destination_folders.write_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
+
+    tx1.send(format!("lists stored in files.")).expect("mpsc send");
 
     Ok(())
 }
