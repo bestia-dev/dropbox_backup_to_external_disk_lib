@@ -1,9 +1,8 @@
 // remote_dropbox_mod.rs
 
 //! Module contains all the communication with the remote dropbox storage.
-
-use dropbox_sdk::default_client::UserAuthDefaultClient;
-use dropbox_sdk::files;
+//! It uses inter-thread channels to send text to the UserInterface thread.
+//! It uses LibError to return error text to the UI thread.
 
 use crate::app_state_mod::APP_STATE;
 use crate::error_mod::LibError;
@@ -15,14 +14,16 @@ type FolderList = Vec<String>;
 type FileList = Vec<String>;
 type FolderListAndFileList = (Vec<String>, Vec<String>);
 type ThreadNum = i32;
+type MasterKey = String;
+type TokenEnc = String;
 
 /// This is a short-lived token, so security is not my primary concern.
 /// But it is bad practice to store anything as plain text. I will encode it and store it in env var.
 /// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
-pub fn encode_token(token: String) -> Result<(String, String), LibError> {
+pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), LibError> {
     // every time, the master key will be random and temporary
     let master_key = fernet::Fernet::generate_key();
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Fernet key is not correct."))?;
+    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet key is not correct."))?;
     let token_enc = fernet.encrypt(token.as_bytes());
     Ok((master_key, token_enc))
 }
@@ -31,16 +32,16 @@ pub fn encode_token(token: String) -> Result<(String, String), LibError> {
 /// experiment with sending function pointer
 pub fn test_connection() -> Result<(), LibError> {
     let token = get_authorization_token()?;
-    let client = UserAuthDefaultClient::new(token);
-    (files::list_folder(&client, &files::ListFolderArg::new("".to_string()))?)?;
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
+    (dropbox_sdk::files::list_folder(&client, &dropbox_sdk::files::ListFolderArg::new("".to_string()))?)?;
     Ok(())
 }
 
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    let (master_key, token_enc) = APP_STATE.get().expect("OnceCell").load_keys_from_io()?;
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Fernet master key is not correct."))?;
+    let (master_key, token_enc) = APP_STATE.get().expect("Error OnceCell").load_keys_from_io()?;
+    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet master key is not correct."))?;
     let token = fernet.decrypt(&token_enc)?;
     let token = String::from_utf8(token)?;
     // return
@@ -68,8 +69,8 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
     file_list_source_folders.empty()?;
 
     let token = get_authorization_token()?;
-    let token_clone2 = token.to_owned().clone();
-    let client = UserAuthDefaultClient::new(token_clone2);
+    let token_clone_1 = token.to_owned().clone();
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone_1);
 
     // channel for inter-thread communication to send folder/files lists
     let (list_tx, list_rx) = mpsc::channel();
@@ -80,29 +81,33 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
 
     let mut folder_list_all = vec![];
     let mut file_list_all = file_list_root;
+    let ui_tx_clone_2 = ui_tx.clone();
 
     // these folders will request walkdir recursive in parallel
     // loop in a new thread, so the send msg will come immediately
     let _sender_thread = std::thread::spawn(move || {
         // threadpool with 3 threads
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("rayon ThreadPoolBuilder");
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("Error rayon ThreadPoolBuilder");
         pool.scope(|scoped| {
             for folder_path in &folder_list_root {
                 // these variables will be moved/captured into the closure
                 let folder_path = folder_path.clone();
-                let ui_tx_clone_2 = mpsc::Sender::clone(&ui_tx);
+                let ui_tx_clone_3 = ui_tx_clone_2.clone();
                 let token_clone2 = token.to_owned().clone();
-                let list_tx_clone_1 = mpsc::Sender::clone(&list_tx);
+                let list_tx_clone_1 = list_tx.clone();
                 // execute in a separate threads, or waits for a free thread from the pool
                 // scoped.spawn closure cannot return a Result<>, but it can send it as inter-thread message
                 scoped.spawn(move |_s| {
-                    let client = UserAuthDefaultClient::new(token_clone2.to_owned());
+                    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone2.to_owned());
                     // recursive walkdir
-                    let thread_num = rayon::current_thread_index().expect("rayon current_thread_index") as ThreadNum;
-                    list_tx_clone_1.send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_2)).expect("mpsc send");
+                    let thread_num = rayon::current_thread_index().expect("Error rayon current_thread_index") as ThreadNum;
+                    list_tx_clone_1
+                        .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
+                        .expect("Error mpsc send");
                 });
             }
-            drop(ui_tx);
+            // all clones of tx must be dropped to finish the receiver iterator
+            drop(list_tx);
         });
     });
 
@@ -118,75 +123,90 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
         file_list_all.extend_from_slice(&file_list);
     }
 
-    /*     sort_remote_list_and_write_to_file(file_list_all, app_config);
-    sort_remote_list_folder_and_write_to_file(folder_list_all, app_config);
-    // TODO: folders size is easy to calculate here. Sum all the files that start with a folder path */
+    ui_tx.send((format!("remote list file sort {all_file_count}"), 0)).expect("Error mpsc send");
+    sort_remote_list_and_write_to_file(file_list_all, &mut file_list_source_files)?;
+    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), 0)).expect("Error mpsc send");
+    sort_remote_list_folder_and_write_to_file(folder_list_all, &mut file_list_source_folders)?;
+
+    drop(ui_tx);
     Ok(())
 }
 
 /// list remote folder
-pub fn list_remote_folder(client: &UserAuthDefaultClient, path: &str, thread_num: i32, recursive: bool, tx_clone: mpsc::Sender<(String, ThreadNum)>) -> Result<FolderListAndFileList, LibError> {
+pub fn list_remote_folder(
+    client: &dropbox_sdk::default_client::UserAuthDefaultClient,
+    path: &str,
+    thread_num: i32,
+    recursive: bool,
+    tx_clone: mpsc::Sender<(String, ThreadNum)>,
+) -> Result<FolderListAndFileList, LibError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
     let mut last_send_ms = std::time::Instant::now();
 
-    match dropbox_list_folder(&client, path, recursive) {
+    match dropbox_list_folder(client, path, recursive) {
         Ok(Ok(iterator)) => {
             for entry_result in iterator {
                 match entry_result {
-                    Ok(Ok(files::Metadata::Folder(entry))) => {
+                    Ok(Ok(dropbox_sdk::files::Metadata::Folder(entry))) => {
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let folder_path = entry.path_display.unwrap_or(entry.name);
-                        /*  if last_send_ms.elapsed().as_millis() >= 100 { */
-                        tx_clone
-                            .send((format!("Folder thread:{thread_num} {}", crate::shorten_string(&folder_path, 50)), thread_num))
-                            .expect("mpsc send");
-                        last_send_ms = std::time::Instant::now();
-                        /*   } */
+                        // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
+                        if last_send_ms.elapsed().as_millis() >= 100 {
+                            tx_clone
+                                .send((format!("R{thread_num} Folder: {}", crate::shorten_string(&folder_path, 80)), thread_num))
+                                .expect("Error mpsc send");
+                            last_send_ms = std::time::Instant::now();
+                        }
                         folder_list.push(folder_path);
                     }
-                    Ok(Ok(files::Metadata::File(entry))) => {
+                    Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
                         // write csv tab delimited
                         // avoid strange files *com.dropbox.attrs
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let file_path = entry.path_display.unwrap_or(entry.name);
                         if !file_path.ends_with("com.dropbox.attrs") {
-                            /*   if last_send_ms.elapsed().as_millis() >= 100 { */
-                            tx_clone
-                                .send((format!("File thread:{thread_num} {}", crate::shorten_string(&file_path, 50)), thread_num))
-                                .expect("mpsc send");
-                            last_send_ms = std::time::Instant::now();
-                            /*  } */
+                            // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
+                            if last_send_ms.elapsed().as_millis() >= 100 {
+                                tx_clone
+                                    .send((format!("R{thread_num} File: {}", crate::shorten_string(&file_path, 80)), thread_num))
+                                    .expect("Error mpsc send");
+                                last_send_ms = std::time::Instant::now();
+                            }
                             file_list.push(format!("{}\t{}\t{}", file_path, entry.client_modified, entry.size));
                         }
                     }
-                    Ok(Ok(files::Metadata::Deleted(_entry))) => {
-                        return Err(LibError::ErrorFromString(format!("Unexpected deleted entry on thread:{thread_num}")));
+                    Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
+                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error unexpected deleted entry")));
                     }
                     Ok(Err(e)) => {
-                        return Err(LibError::ErrorFromString(format!("Error from files/list_folder_continue thread:{thread_num} {e}")));
+                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error from files/list_folder_continue: {e}")));
                     }
                     Err(e) => {
-                        return Err(LibError::ErrorFromString(format!("API request error thread:{thread_num} {e}")));
+                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error API request: {e}")));
                     }
                 }
             }
             // return FolderListAndFileList
             Ok((folder_list, file_list))
         }
-        Ok(Err(e)) => Err(LibError::ErrorFromString(format!("Error from files/list_folder thread:{thread_num} {e}"))),
-        Err(e) => Err(LibError::ErrorFromString(format!("API request error thread:{thread_num} {e}"))),
+        Ok(Err(e)) => Err(LibError::ErrorFromString(format!("R{thread_num} Error from files/list_folder: {e}"))),
+        Err(e) => Err(LibError::ErrorFromString(format!("R{thread_num} Error API request: {e}"))),
     }
 }
 
 /// dropbox function to list folders
-fn dropbox_list_folder<'a>(client: &'a UserAuthDefaultClient, path: &str, recursive: bool) -> dropbox_sdk::Result<Result<DirectoryIterator<'a>, files::ListFolderError>> {
+fn dropbox_list_folder<'a>(
+    client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
+    path: &str,
+    recursive: bool,
+) -> dropbox_sdk::Result<Result<DirectoryIterator<'a>, dropbox_sdk::files::ListFolderError>> {
     // validate input parameters
     // assert! macro will panic if false.
     // Is is not used for user input validation but to express an assumption (for code readers) and to catch coding bugs (in the caller).
     // You express which invariant should always be true and therefore there should be no failure. If a failure happens it is a coding bug in the caller.
     // An invariant is any "logical rule that must be obeyed" (assumption) that can be communicated to a human, but not to your compiler.
-    assert!(path.starts_with('/'), "path needs to be absolute (start with a '/')");
+    assert!(path.starts_with('/'), "Error path needs to be absolute (start with a '/')");
 
     let path = if path == "/" {
         // Root folder should be requested as empty string
@@ -195,7 +215,7 @@ fn dropbox_list_folder<'a>(client: &'a UserAuthDefaultClient, path: &str, recurs
         path.to_owned()
     };
 
-    match files::list_folder(client, &files::ListFolderArg::new(path).with_recursive(recursive)) {
+    match dropbox_sdk::files::list_folder(client, &dropbox_sdk::files::ListFolderArg::new(path).with_recursive(recursive)) {
         Ok(Ok(result)) => {
             let cursor = if result.has_more { Some(result.cursor) } else { None };
 
@@ -212,21 +232,21 @@ fn dropbox_list_folder<'a>(client: &'a UserAuthDefaultClient, path: &str, recurs
 
 /// iterator for Directory on remote Dropbox storage
 struct DirectoryIterator<'a> {
-    client: &'a UserAuthDefaultClient,
-    buffer: VecDeque<files::Metadata>,
+    client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
+    buffer: VecDeque<dropbox_sdk::files::Metadata>,
     cursor: Option<String>,
 }
 
 impl<'a> Iterator for DirectoryIterator<'a> {
-    type Item = dropbox_sdk::Result<Result<files::Metadata, files::ListFolderContinueError>>;
+    type Item = dropbox_sdk::Result<Result<dropbox_sdk::files::Metadata, dropbox_sdk::files::ListFolderContinueError>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(entry) = self.buffer.pop_front() {
             Some(Ok(Ok(entry)))
         } else if let Some(cursor) = self.cursor.take() {
-            match files::list_folder_continue(self.client, &files::ListFolderContinueArg::new(cursor)) {
+            match dropbox_sdk::files::list_folder_continue(self.client, &dropbox_sdk::files::ListFolderContinueArg::new(cursor)) {
                 Ok(Ok(result)) => {
-                    self.buffer.extend(result.entries.into_iter());
+                    self.buffer.extend(result.entries);
                     if result.has_more {
                         self.cursor = Some(result.cursor);
                     }
@@ -241,39 +261,39 @@ impl<'a> Iterator for DirectoryIterator<'a> {
     }
 }
 
-/*
 /// sort and write to file
-pub fn sort_remote_list_and_write_to_file(mut file_list_all: Vec<String>, app_config: &'static AppConfig) {
-    print!("{}remote list file sort", at_line(9));
-
+pub fn sort_remote_list_and_write_to_file(mut file_list_all: Vec<String>, file_txt: &mut crate::FileTxt) -> Result<(), LibError> {
     use rayon::prelude::*;
     file_list_all.par_sort_unstable_by(|a, b| {
-        let aa: &UncasedStr = a.as_str().into();
-        let bb: &UncasedStr = b.as_str().into();
+        let aa: &uncased::UncasedStr = a.as_str().into();
+        let bb: &uncased::UncasedStr = b.as_str().into();
         aa.cmp(bb)
     });
     // join to string and write to file
     let string_file_list_all = file_list_all.join("\n");
-    unwrap!(fs::write(app_config.path_list_source_files, string_file_list_all));
+    file_txt.write_str(&string_file_list_all)?;
+    Ok(())
 }
 
 /// sort and write folders to file
-pub fn sort_remote_list_folder_and_write_to_file(mut folder_list_all: Vec<String>, app_config: &'static AppConfig) {
+pub fn sort_remote_list_folder_and_write_to_file(mut folder_list_all: Vec<String>, file_txt: &mut crate::FileTxt) -> Result<(), LibError> {
     use rayon::prelude::*;
     folder_list_all.par_sort_unstable_by(|a, b| {
-        let aa: &UncasedStr = a.as_str().into();
-        let bb: &UncasedStr = b.as_str().into();
+        let aa: &uncased::UncasedStr = a.as_str().into();
+        let bb: &uncased::UncasedStr = b.as_str().into();
         aa.cmp(bb)
     });
     // join to string and write to file
     let string_folder_list_all = folder_list_all.join("\n");
-    unwrap!(fs::write(app_config.path_list_source_folders, string_folder_list_all));
+    file_txt.write_str(&string_folder_list_all)?;
+    Ok(())
 }
 
+/*
 /// download one file
 pub fn download_one_file(path_to_download: &str, app_config: &'static AppConfig) {
     let token = get_short_lived_access_token();
-    let client = UserAuthDefaultClient::new(token);
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
     let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
     // channel for inter-thread communication.
@@ -299,10 +319,10 @@ pub fn download_one_file(path_to_download: &str, app_config: &'static AppConfig)
     }
 }
 
-/// download one file with client object UserAuthDefaultClient
+/// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
     download_path: &str,
-    client: &UserAuthDefaultClient,
+    client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     base_local_path: &str,
     thread_num: i32,
     tx_clone: mpsc::Sender<(String, i32)>,
@@ -311,7 +331,7 @@ fn download_internal(
 ) {
     //log::trace!("download_with_client: {}",download_path);
     let mut bytes_out = 0u64;
-    let download_arg = files::DownloadArg::new(download_path.to_string());
+    let download_arg = dropbox_sdk::files::DownloadArg::new(download_path.to_string());
     log::trace!("download_arg: {}", &download_arg.path);
     let local_path = format!("{}{}", base_local_path, download_path);
     // create folder if it does not exist
@@ -338,10 +358,10 @@ fn download_internal(
     let mut s_modified = "".to_string();
     // I will download to a temp folder and then move the file to the right folder only when the download is complete.
     'download: loop {
-        let result = files::download(client, &download_arg, Some(bytes_out), None);
+        let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
         match result {
             Ok(Ok(download_result)) => {
-                let mut body = download_result.body.expect("no body received!");
+                let mut body = download_result.body.expect("Error no body received!");
                 if modified.is_none() {
                     s_modified = download_result.result.client_modified.clone();
                     modified = Some(filetime::FileTime::from_system_time(unwrap!(humantime::parse_rfc3339(&s_modified))));
@@ -430,7 +450,7 @@ pub fn download_from_list(app_config: &'static AppConfig) {
         print!("{}", at_line(y));
 
         let token = get_short_lived_access_token();
-        let client = UserAuthDefaultClient::new(token);
+        let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
         // channel for inter-thread communication.
         let (tx, rx) = mpsc::channel();
 
@@ -533,18 +553,18 @@ pub fn download_from_list(app_config: &'static AppConfig) {
 
 
 /// get content_hash from remote
-pub fn remote_content_hash(remote_path: &str, client: &UserAuthDefaultClient) -> Option<String> {
-    let arg = files::GetMetadataArg::new(remote_path.to_string());
+pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_client::UserAuthDefaultClient) -> Option<String> {
+    let arg = dropbox_sdk::files::GetMetadataArg::new(remote_path.to_string());
     let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
 
     match res_res_metadata {
-        Ok(Ok(files::Metadata::Folder(_entry))) => {
+        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => {
             return None;
         }
-        Ok(Ok(files::Metadata::File(entry))) => {
+        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
             return Some(unwrap!(entry.content_hash));
         }
-        Ok(Ok(files::Metadata::Deleted(_entry))) => {
+        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
             return None;
         }
         Ok(Err(e)) => {

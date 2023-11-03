@@ -42,7 +42,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
-        let str_path = path.to_str().ok_or_else(|| LibError::ErrorFromStr("string is not path"))?;
+        let str_path = path.to_str().ok_or_else(|| LibError::ErrorFromStr("Error string is not path"))?;
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
             // I don't need the "base" folder in this list
@@ -52,7 +52,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
                 if last_send_ms.elapsed().as_millis() >= 100 {
                     ui_tx
                         .send(format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)))
-                        .expect("mpsc send");
+                        .expect("Error mpsc send");
 
                     last_send_ms = std::time::Instant::now();
                 }
@@ -76,7 +76,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
         }
     }
 
-    ui_tx.send(format!("local_folder_count: {folder_count}")).expect("mpsc send");
+    ui_tx.send(format!("local_folder_count: {folder_count}")).expect("Error mpsc send");
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -87,7 +87,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
     file_list_destination_folders.write_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
 
-    ui_tx.send(format!("All lists stored in files.")).expect("mpsc send");
+    ui_tx.send("All lists stored in files.".to_string()).expect("Error mpsc send");
 
     Ok(())
 }

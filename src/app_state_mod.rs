@@ -38,7 +38,7 @@ pub trait AppStateMethods: Sync + Send {
 /// All fields are private. Only the methods can be used globally.  
 /// Example how to use it:
 /// fn global_app_state() -> &'static Box<dyn lib::AppStateMethods> {
-///     lib::APP_STATE.get().expect("OnceCell must not be empty.")
+///     lib::APP_STATE.get().expect("Error OnceCell must not be empty.")
 /// }
 /// println!("{}", global_app_state().ref_app_config().path_list_for_create_folders);
 /// println!("{}", global_app_state().lock_proba());  

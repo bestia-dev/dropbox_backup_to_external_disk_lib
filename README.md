@@ -96,8 +96,7 @@ And another REGEX surprise. I try to have all text files delimited with the unix
 
 Simple text files are a terrible way to store data that needs to be changed. It is ok for write once and then read. But there is not a good way to modify only one line inside a big text file. The recommended approach is read all, modify, save all. If the memory is not big enough then use a buffer to read a segment, modify, save a segment, repeat to end.  
 There is another approach called memory map to file, but everybody is trying to avoid it because some other process could modify the file when in use and make it garbage.  
-Sounds like a database is always a better choice for more agile development.  
-In this project I will create additional files that only append lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded_or_moved.csv is added to list_destination_files.csv.  
+Sounds like a database is always a better choice for more agile development. In this project, I will create additional files that only append lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded_or_moved.csv is added to list_destination_files.csv.  
 
 ### how to invert black-white in paint.net for dark theme
 
@@ -120,6 +119,13 @@ Is there a limit in the api for file size bigger than 2GB? Why the program crash
 Files with size 0 are not downloaded.
 Solve empty folders in the program.
 Make a command inside the program to save the oauth_token.  
+
+## Dropbox basic account (free) for testing
+
+I created a free basic account, so I can do testing and examples easily for this project.  
+
+Generated access token for testing:
+sl.BpJybWnGH0ZZ1974AAMnahDcyBcwt2_1RSUreTxYabTUNKuoQo4qszwca75_2M5vTzoc5_UbHtI1hux-51MDh4H2vfWwMuJJtf5LkhILJrESLnl7Wf0CORSZ-9snHTxPKUiLaEjU2t4c
 
 ## Open-source and free as a beer
 
