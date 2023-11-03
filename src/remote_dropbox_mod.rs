@@ -7,6 +7,14 @@ use dropbox_sdk::files;
 
 use crate::app_state_mod::APP_STATE;
 use crate::error_mod::LibError;
+use crate::global_config;
+
+// type alias for better expressing coder intention,
+// but programmatically identical to the underlying type
+type FolderList = Vec<String>;
+type FileList = Vec<String>;
+type FolderListAndFileList = (Vec<String>, Vec<String>);
+type ThreadNum = i32;
 
 /// This is a short-lived token, so security is not my primary concern.
 /// But it is bad practice to store anything as plain text. I will encode it and store it in env var.
@@ -31,7 +39,6 @@ pub fn test_connection() -> Result<(), LibError> {
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    //let (master_key, token_enc) = APP_STATE.get().unwrap().lock().unwrap().load_keys_from_io()?;
     let (master_key, token_enc) = APP_STATE.get().expect("OnceCell").load_keys_from_io()?;
     let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Fernet master key is not correct."))?;
     let token = fernet.decrypt(&token_enc)?;
@@ -40,117 +47,103 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, L
     Ok(dropbox_sdk::oauth2::Authorization::from_access_token(token))
 }
 
-/*
-
 #[allow(unused_imports)]
 use std::collections::VecDeque;
-use std::env;
+/* use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::path;
+use std::path; */
 use std::sync::mpsc;
-use std::thread;
+/* use std::thread;
 use uncased::UncasedStr;
-use unwrap::unwrap;
-
-
-
-
-
-
+use unwrap::unwrap; */
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
-pub fn list_remote(app_config: &'static AppConfig) {
-    // empty the file. I want all or nothing result here if the process is terminated prematurely.
-    fs::write(app_config.path_list_source_files, "").unwrap();
-    fs::write(app_config.path_list_source_folders, "").unwrap();
+pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Result<(), LibError> {
+    // empty the files. I want all or nothing result here if the process is terminated prematurely.
+    let mut file_list_source_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_source_files)?;
+    file_list_source_files.empty()?;
+    let mut file_list_source_folders = crate::FileTxt::open_for_read_and_write(global_config().path_list_source_folders)?;
+    file_list_source_folders.empty()?;
 
-    let token = get_short_lived_access_token();
+    let token = get_authorization_token()?;
     let token_clone2 = token.to_owned().clone();
-    let client = UserAuthDefaultClient::new(token_clone2.to_owned());
+    let client = UserAuthDefaultClient::new(token_clone2);
 
-    // channel for inter-thread communication.
-    let (tx, rx) = mpsc::channel();
-    let tx_clone3 = mpsc::Sender::clone(&tx);
-
-    let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
+    // channel for inter-thread communication to send folder/files lists
+    let (list_tx, list_rx) = mpsc::channel();
 
     // walkdir non-recursive for the first level of folders
-    let (folder_list, file_list) = list_remote_folder(&client, "/", 0, false, tx_clone3, x_screen_len);
-    let folder_list_root = folder_list.clone();
+    let ui_tx_clone_1 = ui_tx.clone();
+    let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx_clone_1)?;
+
     let mut folder_list_all = vec![];
-    let mut file_list_all = file_list;
+    let mut file_list_all = file_list_root;
 
     // these folders will request walkdir recursive in parallel
     // loop in a new thread, so the send msg will come immediately
-    let _sender_thread = thread::spawn(move || {
+    let _sender_thread = std::thread::spawn(move || {
         // threadpool with 3 threads
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("rayon ThreadPoolBuilder");
         pool.scope(|scoped| {
             for folder_path in &folder_list_root {
+                // these variables will be moved/captured into the closure
                 let folder_path = folder_path.clone();
-                let tx_clone2 = mpsc::Sender::clone(&tx);
-                let tx_clone4 = mpsc::Sender::clone(&tx);
+                let ui_tx_clone_2 = mpsc::Sender::clone(&ui_tx);
                 let token_clone2 = token.to_owned().clone();
+                let list_tx_clone_1 = mpsc::Sender::clone(&list_tx);
                 // execute in a separate threads, or waits for a free thread from the pool
+                // scoped.spawn closure cannot return a Result<>, but it can send it as inter-thread message
                 scoped.spawn(move |_s| {
                     let client = UserAuthDefaultClient::new(token_clone2.to_owned());
                     // recursive walkdir
-                    let thread_num = unwrap!(rayon::current_thread_index()) as i32;
-                    let (folder_list, file_list) = list_remote_folder(&client, &folder_path, thread_num, true, tx_clone2, x_screen_len);
-                    unwrap!(tx_clone4.send((Some(folder_list), Some(file_list), 0, 0)));
+                    let thread_num = rayon::current_thread_index().expect("rayon current_thread_index") as ThreadNum;
+                    list_tx_clone_1.send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_2)).expect("mpsc send");
                 });
             }
-            drop(tx);
+            drop(ui_tx);
         });
     });
 
-    // the receiver reads all msgs from the queue, until senders exist - drop(tx)
+    // the receiver reads all msgs from the queue
     let mut all_folder_count = 0;
     let mut all_file_count = 0;
-    for msg in &rx {
-        let (folder_list, file_list, folder_count, file_count) = msg;
-        if let Some(folder_list) = folder_list {
-            folder_list_all.extend_from_slice(&folder_list);
-        }
-        if let Some(file_list) = file_list {
-            file_list_all.extend_from_slice(&file_list);
-        }
-        all_folder_count += folder_count;
-        all_file_count += file_count;
-        println!("{}{}remote_folder_count: {}", at_line(7), *CLEAR_LINE, all_folder_count);
-        println!("{}{}remote_file_count: {}", at_line(8), *CLEAR_LINE, all_file_count);
+    for msg in &list_rx {
+        // the Result received from a thread will be propagated here
+        let (folder_list, file_list) = msg?;
+        all_folder_count += folder_list.len();
+        all_file_count += file_list.len();
+        folder_list_all.extend_from_slice(&folder_list);
+        file_list_all.extend_from_slice(&file_list);
     }
 
-    sort_remote_list_and_write_to_file(file_list_all, app_config);
+    /*     sort_remote_list_and_write_to_file(file_list_all, app_config);
     sort_remote_list_folder_and_write_to_file(folder_list_all, app_config);
-    // TODO: folders size is easy to calculate here. Sum all the files that start with a folder path
+    // TODO: folders size is easy to calculate here. Sum all the files that start with a folder path */
+    Ok(())
 }
 
 /// list remote folder
-pub fn list_remote_folder(
-    client: &UserAuthDefaultClient,
-    path: &str,
-    thread_num: i32,
-    recursive: bool,
-    tx_clone: mpsc::Sender<(Option<Vec<String>>, Option<Vec<String>>, i32, i32)>,
-    x_screen_len: u16,
-) -> (Vec<String>, Vec<String>) {
-    let mut folder_list: Vec<String> = vec![];
-    let mut file_list: Vec<String> = vec![];
-    let screen_line = 4 + thread_num as u16;
-    match list_directory(&client, path, recursive) {
+pub fn list_remote_folder(client: &UserAuthDefaultClient, path: &str, thread_num: i32, recursive: bool, tx_clone: mpsc::Sender<(String, ThreadNum)>) -> Result<FolderListAndFileList, LibError> {
+    let mut folder_list: FolderList = vec![];
+    let mut file_list: FileList = vec![];
+    let mut last_send_ms = std::time::Instant::now();
+
+    match dropbox_list_folder(&client, path, recursive) {
         Ok(Ok(iterator)) => {
             for entry_result in iterator {
                 match entry_result {
                     Ok(Ok(files::Metadata::Folder(entry))) => {
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let folder_path = entry.path_display.unwrap_or(entry.name);
-                        // for 3 threads this is lines: 4,5, 6,7, 8,9, so summary can be on 10,11 and list_local on 16,17
-                        println!("{}{}{}. Folder: {}", at_line(screen_line), *CLEAR_LINE, thread_num, shorten_string(&folder_path, x_screen_len - 11));
+                        /*  if last_send_ms.elapsed().as_millis() >= 100 { */
+                        tx_clone
+                            .send((format!("Folder thread:{thread_num} {}", crate::shorten_string(&folder_path, 50)), thread_num))
+                            .expect("mpsc send");
+                        last_send_ms = std::time::Instant::now();
+                        /*   } */
                         folder_list.push(folder_path);
-                        unwrap!(tx_clone.send((None, None, 1, 0)));
                     }
                     Ok(Ok(files::Metadata::File(entry))) => {
                         // write csv tab delimited
@@ -158,35 +151,97 @@ pub fn list_remote_folder(
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let file_path = entry.path_display.unwrap_or(entry.name);
                         if !file_path.ends_with("com.dropbox.attrs") {
+                            /*   if last_send_ms.elapsed().as_millis() >= 100 { */
+                            tx_clone
+                                .send((format!("File thread:{thread_num} {}", crate::shorten_string(&file_path, 50)), thread_num))
+                                .expect("mpsc send");
+                            last_send_ms = std::time::Instant::now();
+                            /*  } */
                             file_list.push(format!("{}\t{}\t{}", file_path, entry.client_modified, entry.size));
-                            unwrap!(tx_clone.send((None, None, 0, 1)));
                         }
                     }
-                    Ok(Ok(files::Metadata::Deleted(entry))) => {
-                        panic!("{}{}{}unexpected deleted entry: {:?}{}", at_line(screen_line), *CLEAR_LINE, *RED, entry, *RESET);
+                    Ok(Ok(files::Metadata::Deleted(_entry))) => {
+                        return Err(LibError::ErrorFromString(format!("Unexpected deleted entry on thread:{thread_num}")));
                     }
                     Ok(Err(e)) => {
-                        println!("{}{}{}Error from files/list_folder_continue: {}{}", at_line(screen_line), *CLEAR_LINE, *RED, e, *RESET);
-                        break;
+                        return Err(LibError::ErrorFromString(format!("Error from files/list_folder_continue thread:{thread_num} {e}")));
                     }
                     Err(e) => {
-                        println!("{}{}{}API request error: {}{}", at_line(screen_line), *CLEAR_LINE, *RED, e, *RESET);
-                        break;
+                        return Err(LibError::ErrorFromString(format!("API request error thread:{thread_num} {e}")));
                     }
                 }
             }
+            // return FolderListAndFileList
+            Ok((folder_list, file_list))
         }
-        Ok(Err(e)) => {
-            println!("{}{}{}Error from files/list_folder: {}{}", at_line(screen_line), *CLEAR_LINE, *RED, e, *RESET);
-        }
-        Err(e) => {
-            println!("{}{}{}API request error: {}{}", at_line(screen_line), *CLEAR_LINE, *RED, e, *RESET);
-        }
+        Ok(Err(e)) => Err(LibError::ErrorFromString(format!("Error from files/list_folder thread:{thread_num} {e}"))),
+        Err(e) => Err(LibError::ErrorFromString(format!("API request error thread:{thread_num} {e}"))),
     }
-    // return
-    (folder_list, file_list)
 }
 
+/// dropbox function to list folders
+fn dropbox_list_folder<'a>(client: &'a UserAuthDefaultClient, path: &str, recursive: bool) -> dropbox_sdk::Result<Result<DirectoryIterator<'a>, files::ListFolderError>> {
+    // validate input parameters
+    // assert! macro will panic if false.
+    // Is is not used for user input validation but to express an assumption (for code readers) and to catch coding bugs (in the caller).
+    // You express which invariant should always be true and therefore there should be no failure. If a failure happens it is a coding bug in the caller.
+    // An invariant is any "logical rule that must be obeyed" (assumption) that can be communicated to a human, but not to your compiler.
+    assert!(path.starts_with('/'), "path needs to be absolute (start with a '/')");
+
+    let path = if path == "/" {
+        // Root folder should be requested as empty string
+        String::new()
+    } else {
+        path.to_owned()
+    };
+
+    match files::list_folder(client, &files::ListFolderArg::new(path).with_recursive(recursive)) {
+        Ok(Ok(result)) => {
+            let cursor = if result.has_more { Some(result.cursor) } else { None };
+
+            Ok(Ok(DirectoryIterator {
+                client,
+                cursor,
+                buffer: result.entries.into(),
+            }))
+        }
+        Ok(Err(e)) => Ok(Err(e)),
+        Err(e) => Err(e),
+    }
+}
+
+/// iterator for Directory on remote Dropbox storage
+struct DirectoryIterator<'a> {
+    client: &'a UserAuthDefaultClient,
+    buffer: VecDeque<files::Metadata>,
+    cursor: Option<String>,
+}
+
+impl<'a> Iterator for DirectoryIterator<'a> {
+    type Item = dropbox_sdk::Result<Result<files::Metadata, files::ListFolderContinueError>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(entry) = self.buffer.pop_front() {
+            Some(Ok(Ok(entry)))
+        } else if let Some(cursor) = self.cursor.take() {
+            match files::list_folder_continue(self.client, &files::ListFolderContinueArg::new(cursor)) {
+                Ok(Ok(result)) => {
+                    self.buffer.extend(result.entries.into_iter());
+                    if result.has_more {
+                        self.cursor = Some(result.cursor);
+                    }
+                    self.buffer.pop_front().map(|entry| Ok(Ok(entry)))
+                }
+                Ok(Err(e)) => Some(Ok(Err(e))),
+                Err(e) => Some(Err(e)),
+            }
+        } else {
+            None
+        }
+    }
+}
+
+/*
 /// sort and write to file
 pub fn sort_remote_list_and_write_to_file(mut file_list_all: Vec<String>, app_config: &'static AppConfig) {
     print!("{}remote list file sort", at_line(9));
@@ -476,60 +531,6 @@ pub fn download_from_list(app_config: &'static AppConfig) {
     compare_files(app_config);
 }
 
-/// list directory
-fn list_directory<'a>(client: &'a UserAuthDefaultClient, path: &str, recursive: bool) -> dropbox_sdk::Result<Result<DirectoryIterator<'a>, files::ListFolderError>> {
-    assert!(path.starts_with('/'), "path needs to be absolute (start with a '/')");
-    let requested_path = if path == "/" {
-        // Root folder should be requested as empty string
-        String::new()
-    } else {
-        path.to_owned()
-    };
-    match files::list_folder(client, &files::ListFolderArg::new(requested_path).with_recursive(recursive)) {
-        Ok(Ok(result)) => {
-            let cursor = if result.has_more { Some(result.cursor) } else { None };
-
-            Ok(Ok(DirectoryIterator {
-                client,
-                cursor,
-                buffer: result.entries.into(),
-            }))
-        }
-        Ok(Err(e)) => Ok(Err(e)),
-        Err(e) => Err(e),
-    }
-}
-
-/// iterator for Directory on remote Dropbox storage
-struct DirectoryIterator<'a> {
-    client: &'a UserAuthDefaultClient,
-    buffer: VecDeque<files::Metadata>,
-    cursor: Option<String>,
-}
-
-impl<'a> Iterator for DirectoryIterator<'a> {
-    type Item = dropbox_sdk::Result<Result<files::Metadata, files::ListFolderContinueError>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(entry) = self.buffer.pop_front() {
-            Some(Ok(Ok(entry)))
-        } else if let Some(cursor) = self.cursor.take() {
-            match files::list_folder_continue(self.client, &files::ListFolderContinueArg::new(cursor)) {
-                Ok(Ok(result)) => {
-                    self.buffer.extend(result.entries.into_iter());
-                    if result.has_more {
-                        self.cursor = Some(result.cursor);
-                    }
-                    self.buffer.pop_front().map(|entry| Ok(Ok(entry)))
-                }
-                Ok(Err(e)) => Some(Ok(Err(e))),
-                Err(e) => Some(Err(e)),
-            }
-        } else {
-            None
-        }
-    }
-}
 
 /// get content_hash from remote
 pub fn remote_content_hash(remote_path: &str, client: &UserAuthDefaultClient) -> Option<String> {
