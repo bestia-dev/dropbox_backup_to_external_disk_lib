@@ -106,11 +106,12 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
                     list_tx_clone_1
                         .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
                         .expect("Error mpsc send");
+                    // TODO: this send raises error? Why? The receiver should be alive for long.
                 });
             }
-            // all clones of tx must be dropped to finish the receiver iterator
-            drop(list_tx);
         });
+        // all clones of tx must be dropped to finish the receiver iterator
+        drop(list_tx);
     });
 
     // the receiver reads all msgs from the queue
@@ -125,9 +126,9 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
         file_list_all.extend_from_slice(&file_list);
     }
 
-    ui_tx.send((format!("remote list file sort {all_file_count}"), "L0".to_string())).expect("Error mpsc send");
+    ui_tx.send((format!("remote list file sort {all_file_count}"), "R0".to_string())).expect("Error mpsc send");
     sort_remote_list_and_write_to_file(file_list_all, &mut file_list_source_files)?;
-    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), "L0".to_string())).expect("Error mpsc send");
+    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), "R0".to_string())).expect("Error mpsc send");
     sort_remote_list_folder_and_write_to_file(folder_list_all, &mut file_list_source_folders)?;
 
     drop(ui_tx);

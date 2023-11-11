@@ -96,6 +96,27 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
     Ok(())
 }
 
+/// The backup files must not be readonly to allow copying the modified file from the remote.
+/// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
+pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, base_path: &str,ui_tx: std::sync::mpsc::Sender<String>)-> Result<(), LibError>  {
+    let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
+    for string_path_for_readonly in list_destination_readonly_files.lines() {
+        ui_tx .send(format!("{string_path_for_readonly}")) .expect("Error mpsc send");
+        let global_path_to_readonly = format!("{base_path}{string_path_for_readonly}");
+        let path_global_path_to_readonly = std::path::Path::new(&global_path_to_readonly);
+        // if path does not exist ignore
+        if path_global_path_to_readonly.exists() {
+            let mut perms = path_global_path_to_readonly.metadata()?.permissions();
+            if perms.readonly() == true {
+                perms.set_readonly(false);
+                std::fs::set_permissions(path_global_path_to_readonly, perms)?;
+            }
+        }
+    }
+    file_destination_readonly_files.empty()?;
+    Ok(())
+}
+
 /*
 fn get_content_hash(path_for_download: &str) -> String {
     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
@@ -372,24 +393,6 @@ fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, p
         // println!("list_just_downloaded_or_moved emptied");
         unwrap!(fs::write(path_list_just_downloaded, ""));
     }
-}
-
-/// the File is read + write. It is opened in the bin and not in lib, but it is only manipulated in lib.
-pub fn read_only_toggle(file_destination_readonly_files: &mut FileTxt, base_path: &str) {
-    let list_destination_readonly_files = file_destination_readonly_files.read_to_string().unwrap();
-    for string_path_for_readonly in list_destination_readonly_files.lines() {
-        let global_path_to_readonly = format!("{}{}", base_path, string_path_for_readonly);
-        let path_global_path_to_readonly = path::Path::new(&global_path_to_readonly);
-        // if path does not exist ignore
-        if path_global_path_to_readonly.exists() {
-            let mut perms = path_global_path_to_readonly.metadata().unwrap().permissions();
-            if perms.readonly() == true {
-                perms.set_readonly(false);
-                fs::set_permissions(path_global_path_to_readonly, perms).unwrap();
-            }
-        }
-    }
-    file_destination_readonly_files.empty().unwrap();
 }
 
 /// create new empty folders
