@@ -5,6 +5,10 @@
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
 
+// type alias for better expressing coder intention,
+// but programmatically identical to the underlying type
+type ThreadName=String;
+
 /* use log::error;
 use std::io::Write;
 use std::path;
@@ -16,7 +20,7 @@ use crate::{global_config, LibError};
 /// the logic is in the LIB project, but all UI is in the CLI project
 /// they run on different threads and communicate
 /// It uses the global APP_STATE for all config data
-pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
+pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result<(), LibError> {
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
     let mut file_list_destination_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_destination_files)?;
     file_list_destination_files.empty()?;
@@ -51,7 +55,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
                 // TODO: don't print every folder, because print is slow. Check if 100ms passed
                 if last_send_ms.elapsed().as_millis() >= 100 {
                     ui_tx
-                        .send(format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)))
+                        .send((format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)),format!("L0")))
                         .expect("Error mpsc send");
 
                     last_send_ms = std::time::Instant::now();
@@ -76,7 +80,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
         }
     }
 
-    ui_tx.send(format!("local_folder_count: {folder_count}")).expect("Error mpsc send");
+    ui_tx.send((format!("local_folder_count: {folder_count}"),"L0".to_string())).expect("Error mpsc send");
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -87,7 +91,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError
     file_list_destination_folders.write_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
 
-    ui_tx.send("All lists stored in files.".to_string()).expect("Error mpsc send");
+    ui_tx.send(("All lists stored in files.".to_string(),"L0".to_string())).expect("Error mpsc send");
 
     Ok(())
 }

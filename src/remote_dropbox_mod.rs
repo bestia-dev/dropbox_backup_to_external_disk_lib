@@ -14,6 +14,7 @@ type FolderList = Vec<String>;
 type FileList = Vec<String>;
 type FolderListAndFileList = (Vec<String>, Vec<String>);
 type ThreadNum = i32;
+type ThreadName = String;
 type MasterKey = String;
 type TokenEnc = String;
 
@@ -61,7 +62,7 @@ use unwrap::unwrap; */
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
-pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Result<(), LibError> {
+pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Result<(), LibError> {
     // empty the files. I want all or nothing result here if the process is terminated prematurely.
     let mut file_list_source_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_source_files)?;
     file_list_source_files.empty()?;
@@ -101,6 +102,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
                     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone2.to_owned());
                     // recursive walkdir
                     let thread_num = rayon::current_thread_index().expect("Error rayon current_thread_index") as ThreadNum;
+                    
                     list_tx_clone_1
                         .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
                         .expect("Error mpsc send");
@@ -123,9 +125,9 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
         file_list_all.extend_from_slice(&file_list);
     }
 
-    ui_tx.send((format!("remote list file sort {all_file_count}"), 0)).expect("Error mpsc send");
+    ui_tx.send((format!("remote list file sort {all_file_count}"), "L0".to_string())).expect("Error mpsc send");
     sort_remote_list_and_write_to_file(file_list_all, &mut file_list_source_files)?;
-    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), 0)).expect("Error mpsc send");
+    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), "L0".to_string())).expect("Error mpsc send");
     sort_remote_list_folder_and_write_to_file(folder_list_all, &mut file_list_source_folders)?;
 
     drop(ui_tx);
@@ -136,9 +138,9 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadNum)>) -> Resul
 pub fn list_remote_folder(
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     path: &str,
-    thread_num: i32,
+    thread_num: ThreadNum,
     recursive: bool,
-    tx_clone: mpsc::Sender<(String, ThreadNum)>,
+    tx_clone: mpsc::Sender<(String, ThreadName)>,
 ) -> Result<FolderListAndFileList, LibError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
@@ -154,7 +156,7 @@ pub fn list_remote_folder(
                         // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                         if last_send_ms.elapsed().as_millis() >= 100 {
                             tx_clone
-                                .send((format!("R{thread_num} Folder: {}", crate::shorten_string(&folder_path, 80)), thread_num))
+                                .send((format!("Folder: {}", crate::shorten_string(&folder_path, 80)), format!("R{thread_num}")))
                                 .expect("Error mpsc send");
                             last_send_ms = std::time::Instant::now();
                         }
@@ -169,7 +171,7 @@ pub fn list_remote_folder(
                             // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                             if last_send_ms.elapsed().as_millis() >= 100 {
                                 tx_clone
-                                    .send((format!("R{thread_num} File: {}", crate::shorten_string(&file_path, 80)), thread_num))
+                                    .send((format!("File: {}", crate::shorten_string(&file_path, 80)), format!("R{thread_num}")))
                                     .expect("Error mpsc send");
                                 last_send_ms = std::time::Instant::now();
                             }
