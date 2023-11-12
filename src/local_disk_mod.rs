@@ -100,8 +100,9 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
 pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, base_path: &str,ui_tx: std::sync::mpsc::Sender<String>)-> Result<(), LibError>  {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
+    let mut warning_shown_already = false;
+    let mut there_is_a_readonly_files = false;
     for string_path_for_readonly in list_destination_readonly_files.lines() {
-        ui_tx .send(format!("{string_path_for_readonly}")) .expect("Error mpsc send");
         let global_path_to_readonly = format!("{base_path}{string_path_for_readonly}");
         let path_global_path_to_readonly = std::path::Path::new(&global_path_to_readonly);
         // if path does not exist ignore
@@ -109,11 +110,41 @@ pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, ba
             let mut perms = path_global_path_to_readonly.metadata()?.permissions();
             if perms.readonly() == true {
                 perms.set_readonly(false);
-                std::fs::set_permissions(path_global_path_to_readonly, perms)?;
+                match std::fs::set_permissions(path_global_path_to_readonly, perms){
+                    Ok(_)=>ui_tx.send(format!("{string_path_for_readonly}")).expect("Error mpsc send"),
+                    Err(_err)=>{
+                        there_is_a_readonly_files=true;
+                        if !warning_shown_already{
+                            warning_shown_already=true;
+                            let warning_wsl_cannot_change_attr_in_win="Warning!!! 
+From WSL it is not possible to change readonly attributes in Windows folders. 
+You have to do it manually in PowerShell.";
+                            ui_tx.send(format!("{warning_wsl_cannot_change_attr_in_win}")).expect("Error mpsc send");
+                        }
+                        // from WSL Debian I cannot change the readonly flag on the external disk mounted in Windows
+                        // I get the error: IoError: Operation not permitted (os error 1)
+                        // Instead I will return the commands to run manually in powershell for Windows
+                        // change /mnt/e/ into e:
+                        if global_path_to_readonly.starts_with("/mnt/"){
+                            let win_path = global_path_to_readonly.trim_start_matches("/mnt/");
+                            // replace only the first / with :/
+                            let win_path = win_path.replacen("/",":/",1);
+                            // replace all / with \
+                            let win_path = win_path.replace("/",r#"\"#);
+                            ui_tx.send(format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false")).expect("Error mpsc send");
+                        }
+                    }
+                }
             }
         }
     }
-    file_destination_readonly_files.empty()?;
+    if !there_is_a_readonly_files{
+        file_destination_readonly_files.empty()?;
+        ui_tx.send(format!("All files are now not-readonly.")).expect("Error mpsc send"); 
+    }
+    else {
+        ui_tx.send(format!("There is still some readonly files. Rerun the command.")).expect("Error mpsc send"); 
+    }
     Ok(())
 }
 

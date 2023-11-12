@@ -38,6 +38,7 @@
         "ratatui",
         "rclone",
         "readonly",
+        "replacen",
         "robocopy",
         "rustdevuser",
         "rustfmt",
