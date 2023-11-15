@@ -7,6 +7,7 @@
 use crate::app_state_mod::APP_STATE;
 use crate::error_mod::LibError;
 use crate::global_config;
+use crate::utils_mod::println_to_ui_thread_with_thread_name;
 
 // type alias for better expressing coder intention,
 // but programmatically identical to the underlying type
@@ -52,7 +53,6 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, L
 #[allow(unused_imports)]
 use std::collections::VecDeque;
 /* use std::env;
-use std::fs;
 use std::io::{self, Read, Write};
 use std::path; */
 use std::sync::mpsc;
@@ -102,7 +102,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
                     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone2.to_owned());
                     // recursive walkdir
                     let thread_num = rayon::current_thread_index().expect("Error rayon current_thread_index") as ThreadNum;
-                    
+
                     list_tx_clone_1
                         .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
                         .expect("Error mpsc send");
@@ -126,9 +126,9 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
         file_list_all.extend_from_slice(&file_list);
     }
 
-    ui_tx.send((format!("remote list file sort {all_file_count}"), "R0".to_string())).expect("Error mpsc send");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0".to_string());
     sort_remote_list_and_write_to_file(file_list_all, &mut file_list_source_files)?;
-    ui_tx.send((format!("remote list folder sort: {all_folder_count}"), "R0".to_string())).expect("Error mpsc send");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0".to_string());
     sort_remote_list_folder_and_write_to_file(folder_list_all, &mut file_list_source_folders)?;
 
     drop(ui_tx);
@@ -141,7 +141,7 @@ pub fn list_remote_folder(
     path: &str,
     thread_num: ThreadNum,
     recursive: bool,
-    tx_clone: mpsc::Sender<(String, ThreadName)>,
+    ui_tx: mpsc::Sender<(String, ThreadName)>,
 ) -> Result<FolderListAndFileList, LibError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
@@ -156,9 +156,7 @@ pub fn list_remote_folder(
                         let folder_path = entry.path_display.unwrap_or(entry.name);
                         // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                         if last_send_ms.elapsed().as_millis() >= 100 {
-                            tx_clone
-                                .send((format!("Folder: {}", crate::shorten_string(&folder_path, 80)), format!("R{thread_num}")))
-                                .expect("Error mpsc send");
+                            println_to_ui_thread_with_thread_name(&ui_tx, format!("Folder: {}", crate::shorten_string(&folder_path, 80)), format!("R{thread_num}"));
                             last_send_ms = std::time::Instant::now();
                         }
                         folder_list.push(folder_path);
@@ -171,9 +169,7 @@ pub fn list_remote_folder(
                         if !file_path.ends_with("com.dropbox.attrs") {
                             // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                             if last_send_ms.elapsed().as_millis() >= 100 {
-                                tx_clone
-                                    .send((format!("File: {}", crate::shorten_string(&file_path, 80)), format!("R{thread_num}")))
-                                    .expect("Error mpsc send");
+                                println_to_ui_thread_with_thread_name(&ui_tx, format!("File: {}", crate::shorten_string(&file_path, 80)), format!("R{thread_num}"));
                                 last_send_ms = std::time::Instant::now();
                             }
                             file_list.push(format!("{}\t{}\t{}", file_path, entry.client_modified, entry.size));

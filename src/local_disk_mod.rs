@@ -7,7 +7,7 @@ use dropbox_content_hasher::DropboxContentHasher;
 
 // type alias for better expressing coder intention,
 // but programmatically identical to the underlying type
-type ThreadName=String;
+type ThreadName = String;
 
 /* use log::error;
 use std::io::Write;
@@ -15,12 +15,16 @@ use std::path;
 use uncased::UncasedStr;
 use unwrap::unwrap; */
 
-use crate::{global_config, LibError};
+use crate::{
+    global_config,
+    utils_mod::{println_to_ui_thread, println_to_ui_thread_with_thread_name},
+    LibError,
+};
 
 /// the logic is in the LIB project, but all UI is in the CLI project
 /// they run on different threads and communicate
 /// It uses the global APP_STATE for all config data
-pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result<(), LibError> {
+pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Result<(), LibError> {
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
     let mut file_list_destination_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_destination_files)?;
     file_list_destination_files.empty()?;
@@ -37,7 +41,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
     let mut folders_string = String::new();
     let mut readonly_files_string = String::new();
     use walkdir::WalkDir;
-    let base_path = std::fs::read_to_string(global_config().path_list_ext_disk_base_path)?;
+    let base_path = crate::FileTxt::open_for_read(global_config().path_list_ext_disk_base_path)?.read_to_string()?;
 
     let mut folder_count = 0;
     let mut file_count = 0;
@@ -54,9 +58,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
                 folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
                 // TODO: don't print every folder, because print is slow. Check if 100ms passed
                 if last_send_ms.elapsed().as_millis() >= 100 {
-                    ui_tx
-                        .send((format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)),format!("L0")))
-                        .expect("Error mpsc send");
+                    println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)), format!("L0"));
 
                     last_send_ms = std::time::Instant::now();
                 }
@@ -80,7 +82,7 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
         }
     }
 
-    ui_tx.send((format!("local_folder_count: {folder_count}"),"L0".to_string())).expect("Error mpsc send");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("local_folder_count: {folder_count}"), "L0".to_string());
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -91,14 +93,14 @@ pub fn list_local(ui_tx: std::sync::mpsc::Sender<(String,ThreadName)>) -> Result
     file_list_destination_folders.write_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
 
-    ui_tx.send(("All lists stored in files.".to_string(),"L0".to_string())).expect("Error mpsc send");
+    println_to_ui_thread_with_thread_name(&ui_tx, "All lists stored in files.".to_string(), "L0".to_string());
 
     Ok(())
 }
 
 /// The backup files must not be readonly to allow copying the modified file from the remote.
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
-pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, base_path: &str,ui_tx: std::sync::mpsc::Sender<String>)-> Result<(), LibError>  {
+pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, base_path: &str, ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
     let mut warning_shown_already = false;
     let mut there_is_a_readonly_files = false;
@@ -110,40 +112,39 @@ pub fn read_only_remove(file_destination_readonly_files: &mut crate::FileTxt, ba
             let mut perms = path_global_path_to_readonly.metadata()?.permissions();
             if perms.readonly() == true {
                 perms.set_readonly(false);
-                match std::fs::set_permissions(path_global_path_to_readonly, perms){
-                    Ok(_)=>ui_tx.send(format!("{string_path_for_readonly}")).expect("Error mpsc send"),
-                    Err(_err)=>{
-                        there_is_a_readonly_files=true;
-                        if !warning_shown_already{
-                            warning_shown_already=true;
-                            let warning_wsl_cannot_change_attr_in_win="Warning!!! 
+                match std::fs::set_permissions(path_global_path_to_readonly, perms) {
+                    Ok(_) => println_to_ui_thread(&ui_tx, format!("{string_path_for_readonly}")),
+                    Err(_err) => {
+                        there_is_a_readonly_files = true;
+                        if !warning_shown_already {
+                            warning_shown_already = true;
+                            let warning_wsl_cannot_change_attr_in_win = "Warning!!! 
 From WSL it is not possible to change readonly attributes in Windows folders. 
 You have to do it manually in PowerShell.";
-                            ui_tx.send(format!("{warning_wsl_cannot_change_attr_in_win}")).expect("Error mpsc send");
+                            println_to_ui_thread(&ui_tx, format!("{warning_wsl_cannot_change_attr_in_win}"));
                         }
                         // from WSL Debian I cannot change the readonly flag on the external disk mounted in Windows
                         // I get the error: IoError: Operation not permitted (os error 1)
                         // Instead I will return the commands to run manually in powershell for Windows
                         // change /mnt/e/ into e:
-                        if global_path_to_readonly.starts_with("/mnt/"){
+                        if global_path_to_readonly.starts_with("/mnt/") {
                             let win_path = global_path_to_readonly.trim_start_matches("/mnt/");
                             // replace only the first / with :/
-                            let win_path = win_path.replacen("/",":/",1);
+                            let win_path = win_path.replacen("/", ":/", 1);
                             // replace all / with \
-                            let win_path = win_path.replace("/",r#"\"#);
-                            ui_tx.send(format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false")).expect("Error mpsc send");
+                            let win_path = win_path.replace("/", r#"\"#);
+                            println_to_ui_thread(&ui_tx, format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false"));
                         }
                     }
                 }
             }
         }
     }
-    if !there_is_a_readonly_files{
+    if !there_is_a_readonly_files {
         file_destination_readonly_files.empty()?;
-        ui_tx.send(format!("All files are now not-readonly.")).expect("Error mpsc send"); 
-    }
-    else {
-        ui_tx.send(format!("There is still some readonly files. Rerun the command.")).expect("Error mpsc send"); 
+        println_to_ui_thread(&ui_tx, format!("All files are now not-readonly."));
+    } else {
+        println_to_ui_thread(&ui_tx, format!("There is still some readonly files. Rerun the command."));
     }
     Ok(())
 }
@@ -355,76 +356,6 @@ fn correct_time_from_list_internal(base_local_path: &str, path_list_for_correct_
     file_list_for_correct_time.empty().unwrap();
 }
 
-/// add just downloaded files to list_local (from dropbox remote)
-pub fn add_just_downloaded_to_list_local(app_config: &'static AppConfig) {
-    let path_list_local_files = app_config.path_list_destination_files;
-    add_just_downloaded_to_list_local_internal(app_config.path_list_just_downloaded_or_moved, path_list_local_files);
-}
-
-/// add lines from just_downloaded to list_local. Only before compare.
-fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, path_list_local_files: &str) {
-    let string_just_downloaded = fs::read_to_string(path_list_just_downloaded).unwrap();
-    if !string_just_downloaded.is_empty() {
-        // it must be sorted, because downloads are multi-thread and not in sort order
-        let string_sorted_just_downloaded = crate::sort_string_lines(&string_just_downloaded);
-        let mut vec_sorted_downloaded: Vec<&str> = string_sorted_just_downloaded.lines().collect();
-        // It is forbidden to have duplicate lines
-        vec_sorted_downloaded.dedup();
-        println!("{}: {}", path_list_just_downloaded.split("/").collect::<Vec<&str>>()[1], vec_sorted_downloaded.len());
-        unwrap!(fs::write(path_list_just_downloaded, &string_sorted_just_downloaded));
-
-        let string_local_files = fs::read_to_string(path_list_local_files).unwrap();
-        let mut vec_sorted_local: Vec<&str> = string_local_files.lines().collect();
-
-        // loop the 2 lists and merge sorted
-        let mut cursor_downloaded = 0;
-        let mut cursor_local = 0;
-        let mut vec_line_local: Vec<&str> = vec![];
-        let mut vec_line_downloaded: Vec<&str> = vec![];
-        loop {
-            vec_line_local.truncate(3);
-            vec_line_downloaded.truncate(3);
-
-            if cursor_downloaded >= vec_sorted_downloaded.len() && cursor_local >= vec_sorted_local.len() {
-                break;
-            } else if cursor_downloaded >= vec_sorted_downloaded.len() {
-                // final lines
-                break;
-            } else if cursor_local >= vec_sorted_local.len() {
-                // final lines
-                vec_line_downloaded = vec_sorted_downloaded[cursor_downloaded].split("\t").collect();
-                vec_sorted_local.push(&vec_sorted_downloaded[cursor_downloaded]);
-                cursor_downloaded += 1;
-            } else {
-                vec_line_downloaded = vec_sorted_downloaded[cursor_downloaded].split("\t").collect();
-                vec_line_local = vec_sorted_local[cursor_local].split("\t").collect();
-                // UncasedStr preserves the case in the string, but comparison is done case insensitive
-                let path_downloaded: &UncasedStr = vec_line_downloaded[0].into();
-                let path_local: &UncasedStr = vec_line_local[0].into();
-                if path_downloaded.lt(path_local) {
-                    // insert the line
-                    vec_sorted_local.insert(cursor_local, vec_sorted_downloaded[cursor_downloaded]);
-                    cursor_local += 1;
-                    cursor_downloaded += 1;
-                } else if path_downloaded.gt(path_local) {
-                    cursor_local += 1;
-                } else {
-                    // equal path. replace line
-                    vec_sorted_local[cursor_local] = vec_sorted_downloaded[cursor_downloaded];
-                    cursor_local += 1;
-                    cursor_downloaded += 1;
-                }
-            }
-        }
-
-        let new_local_files = vec_sorted_local.join("\n");
-        unwrap!(fs::write(path_list_local_files, &new_local_files));
-
-        // empty the file temp_data/list_just_downloaded_or_moved.csv
-        // println!("list_just_downloaded_or_moved emptied");
-        unwrap!(fs::write(path_list_just_downloaded, ""));
-    }
-}
 
 /// create new empty folders
 pub fn create_folders(file_list_for_create_folders: &mut FileTxt, base_path: &str) {

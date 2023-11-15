@@ -1,13 +1,24 @@
 // file_txt_mod.rs
 
-/// object to work with text files
+use std::path::{Path, PathBuf};
+
+/// my object to work with text files
 pub struct FileTxt {
+    file_path: PathBuf,
     file_txt: std::fs::File,
 }
+
 impl FileTxt {
-    pub fn from_file(file: std::fs::File) -> Self {
-        FileTxt { file_txt: file }
+    /// if file not exist, returns error
+    pub fn open_for_read(path: &str) -> std::io::Result<Self> {
+        let path = std::path::Path::new(path);
+        let file = std::fs::File::options().read(true).open(path)?;
+        Ok(FileTxt {
+            file_txt: file,
+            file_path: path.to_owned(),
+        })
     }
+
     /// if file not exist, it creates it
     pub fn open_for_read_and_write(path: &str) -> std::io::Result<Self> {
         let path = std::path::Path::new(path);
@@ -16,17 +27,30 @@ impl FileTxt {
         }
         let file = std::fs::File::options().read(true).write(true).open(path)?;
 
-        Ok(Self::from_file(file))
+        Ok(FileTxt {
+            file_txt: file,
+            file_path: path.to_owned(),
+        })
+    }
+
+    // returns file path
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
+    // returns file name, just the last path fragment
+    pub fn file_name(&self) -> String {
+        match self.file_path.to_string_lossy().split("/").collect::<Vec<&str>>().last() {
+            Some(t) => t.to_string(),
+            None => self.file_path.to_string_lossy().to_string(),
+        }
     }
 
     /// This method is similar to fs::read_to_string, but instead of a path it expects a File parameter
     /// So is possible to open a File in the bin part of the project and then pass it to the lib part of project.
     /// All input and output should be in the bin part of project and not in the lib.
-    pub fn read_to_string(&mut self) -> std::io::Result<String> {
-        let size = self.file_txt.metadata().map(|m| m.len()).unwrap_or(0);
-        let mut string = String::with_capacity(size as usize);
-        std::io::Read::read_to_string(&mut self.file_txt, &mut string)?;
-        Ok(string)
+    pub fn read_to_string(&self) -> std::io::Result<String> {
+        std::fs::read_to_string(std::path::Path::new(&self.file_path))
     }
 
     /// write str to file (append)

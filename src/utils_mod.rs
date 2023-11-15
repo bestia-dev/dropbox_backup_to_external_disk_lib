@@ -4,6 +4,21 @@
 
 use uncased::UncasedStr;
 
+// type alias for better expressing coder intention,
+// but programmatically identical to the underlying type
+type ThreadName = String;
+
+/// println_to_ui_thread sends the string to ui thread and works similarly to println!
+/// It panics if there is a bug in the code. This is not a recoverable error.
+pub fn println_to_ui_thread(ui_tx: &std::sync::mpsc::Sender<String>, string: String) {
+    ui_tx.send(string).expect("Error mpsc send");
+}
+
+/// println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println!
+/// It panics if there is a bug in the code. This is not a recoverable error.
+pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: String) {
+    ui_tx.send((string, thread_name)).expect("Error mpsc send");
+}
 /*
 use std::io::Read;
 use std::io::Stdout;
