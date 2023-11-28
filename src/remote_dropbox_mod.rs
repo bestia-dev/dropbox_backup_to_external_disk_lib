@@ -6,8 +6,8 @@
 
 use crate::app_state_mod::APP_STATE;
 use crate::error_mod::LibError;
-use crate::global_config;
 use crate::utils_mod::println_to_ui_thread_with_thread_name;
+use crate::FileTxt;
 
 // type alias for better expressing coder intention,
 // but programmatically identical to the underlying type
@@ -42,7 +42,7 @@ pub fn test_connection() -> Result<(), LibError> {
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    let (master_key, token_enc) = APP_STATE.get().expect("Error OnceCell").load_keys_from_io()?;
+    let (master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
     let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet master key is not correct."))?;
     let token = fernet.decrypt(&token_enc)?;
     let token = String::from_utf8(token)?;
@@ -62,11 +62,9 @@ use unwrap::unwrap; */
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
-pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Result<(), LibError> {
+pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut file_list_source_files: FileTxt, mut file_list_source_folders: FileTxt) -> Result<(), LibError> {
     // empty the files. I want all or nothing result here if the process is terminated prematurely.
-    let mut file_list_source_files = crate::FileTxt::open_for_read_and_write(global_config().path_list_source_files)?;
     file_list_source_files.empty()?;
-    let mut file_list_source_folders = crate::FileTxt::open_for_read_and_write(global_config().path_list_source_folders)?;
     file_list_source_folders.empty()?;
 
     let token = get_authorization_token()?;
@@ -88,7 +86,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
     // loop in a new thread, so the send msg will come immediately
     let _sender_thread = std::thread::spawn(move || {
         // threadpool with 3 threads
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("Error rayon ThreadPoolBuilder");
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("Bug: rayon ThreadPoolBuilder");
         pool.scope(|scoped| {
             for folder_path in &folder_list_root {
                 // these variables will be moved/captured into the closure
@@ -101,11 +99,11 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
                 scoped.spawn(move |_s| {
                     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone2.to_owned());
                     // recursive walkdir
-                    let thread_num = rayon::current_thread_index().expect("Error rayon current_thread_index") as ThreadNum;
+                    let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
 
                     list_tx_clone_1
                         .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
-                        .expect("Error mpsc send");
+                        .expect("Bug: mpsc send");
                     // TODO: this send raises error? Why? The receiver should be alive for long.
                 });
             }
@@ -127,9 +125,12 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>) -> Resu
     }
 
     println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0".to_string());
-    sort_remote_list_and_write_to_file(file_list_all, &mut file_list_source_files)?;
+    let string_file_list = crate::utils_mod::sort_list(file_list_all);
+    file_list_source_files.write_str(&string_file_list)?;
+
     println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0".to_string());
-    sort_remote_list_folder_and_write_to_file(folder_list_all, &mut file_list_source_folders)?;
+    let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
+    file_list_source_folders.write_str(&string_folder_list)?;
 
     drop(ui_tx);
     Ok(())
@@ -260,32 +261,30 @@ impl<'a> Iterator for DirectoryIterator<'a> {
     }
 }
 
-/// sort and write to file
-pub fn sort_remote_list_and_write_to_file(mut file_list_all: Vec<String>, file_txt: &mut crate::FileTxt) -> Result<(), LibError> {
-    use rayon::prelude::*;
-    file_list_all.par_sort_unstable_by(|a, b| {
-        let aa: &uncased::UncasedStr = a.as_str().into();
-        let bb: &uncased::UncasedStr = b.as_str().into();
-        aa.cmp(bb)
-    });
-    // join to string and write to file
-    let string_file_list_all = file_list_all.join("\n");
-    file_txt.write_str(&string_file_list_all)?;
-    Ok(())
-}
+/// get content_hash from remote
+pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_client::UserAuthDefaultClient) -> Option<String> {
+    let arg = dropbox_sdk::files::GetMetadataArg::new(remote_path.to_string());
+    let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
 
-/// sort and write folders to file
-pub fn sort_remote_list_folder_and_write_to_file(mut folder_list_all: Vec<String>, file_txt: &mut crate::FileTxt) -> Result<(), LibError> {
-    use rayon::prelude::*;
-    folder_list_all.par_sort_unstable_by(|a, b| {
-        let aa: &uncased::UncasedStr = a.as_str().into();
-        let bb: &uncased::UncasedStr = b.as_str().into();
-        aa.cmp(bb)
-    });
-    // join to string and write to file
-    let string_folder_list_all = folder_list_all.join("\n");
-    file_txt.write_str(&string_folder_list_all)?;
-    Ok(())
+    match res_res_metadata {
+        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => {
+            return None;
+        }
+        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
+            return Some(entry.content_hash.expect("Bug: dropbox metadata must have hash."));
+        }
+        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
+            return None;
+        }
+        Ok(Err(e)) => {
+            println!("Error get metadata: {}", e);
+            return None;
+        }
+        Err(e) => {
+            println!("API request error: {}", e);
+            return None;
+        }
+    }
 }
 
 /*
@@ -360,7 +359,7 @@ fn download_internal(
         let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
         match result {
             Ok(Ok(download_result)) => {
-                let mut body = download_result.body.expect("Error no body received!");
+                let mut body = download_result.body.expect("Bug: no body received!");
                 if modified.is_none() {
                     s_modified = download_result.result.client_modified.clone();
                     modified = Some(filetime::FileTime::from_system_time(unwrap!(humantime::parse_rfc3339(&s_modified))));
@@ -551,29 +550,5 @@ pub fn download_from_list(app_config: &'static AppConfig) {
 }
 
 
-/// get content_hash from remote
-pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_client::UserAuthDefaultClient) -> Option<String> {
-    let arg = dropbox_sdk::files::GetMetadataArg::new(remote_path.to_string());
-    let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
 
-    match res_res_metadata {
-        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => {
-            return None;
-        }
-        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
-            return Some(unwrap!(entry.content_hash));
-        }
-        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
-            return None;
-        }
-        Ok(Err(e)) => {
-            println!("Error get metadata: {}", e);
-            return None;
-        }
-        Err(e) => {
-            println!("API request error: {}", e);
-            return None;
-        }
-    }
-}
  */

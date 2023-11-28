@@ -1,6 +1,8 @@
 // compare_mod.rs
 
-use crate::{utils_mod::println_to_ui_thread, LibError};
+use std::path::Path;
+
+use crate::{utils_mod::println_to_ui_thread, FileTxt, LibError};
 use uncased::UncasedStr;
 
 /// compare list: the lists and produce list_for_download, list_for_trash, list_for_correct_time
@@ -20,18 +22,18 @@ pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'stati
 /// compare list: the lists must be already sorted for this to work correctly
 fn compare_lists_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
-    path_list_source_files: &str,
-    path_list_destination_files: &str,
-    path_list_for_download: &str,
-    path_list_for_trash: &str,
-    path_list_for_correct_time: &str,
+    path_list_source_files: &Path,
+    path_list_destination_files: &Path,
+    path_list_for_download: &Path,
+    path_list_for_trash: &Path,
+    path_list_for_correct_time: &Path,
 ) -> Result<(), LibError> {
-    let file_list_source_files = crate::FileTxt::open_for_read(path_list_source_files)?;
+    let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
     let vec_list_source_files: Vec<&str> = string_list_source_files.lines().collect();
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_source_files.file_name(), vec_list_source_files.len()));
 
-    let file_list_destination_files = crate::FileTxt::open_for_read(path_list_destination_files)?;
+    let file_list_destination_files = FileTxt::open_for_read(path_list_destination_files)?;
     let string_list_destination_files = file_list_destination_files.read_to_string()?;
     let vec_list_destination_files: Vec<&str> = string_list_destination_files.lines().collect();
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_destination_files.file_name(), vec_list_destination_files.len()));
@@ -87,17 +89,17 @@ fn compare_lists_internal(
             }
         }
     }
-    let mut file_list_for_downloads = crate::FileTxt::open_for_read_and_write(path_list_for_download)?;
+    let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_downloads.file_name(), vec_for_download.len()));
     let string_for_download = vec_for_download.join("\n");
     file_list_for_downloads.write_str(&string_for_download)?;
 
-    let mut file_list_for_trash = crate::FileTxt::open_for_read_and_write(path_list_for_trash)?;
+    let mut file_list_for_trash = FileTxt::open_for_read_and_write(path_list_for_trash)?;
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash.file_name(), vec_for_trash.len()));
     let string_for_trash = vec_for_trash.join("\n");
     file_list_for_trash.write_str(&string_for_trash)?;
 
-    let mut file_list_for_correct_time = crate::FileTxt::open_for_read_and_write(path_list_for_correct_time)?;
+    let mut file_list_for_correct_time = FileTxt::open_for_read_and_write(path_list_for_correct_time)?;
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_correct_time.file_name(), vec_for_correct_time.len()));
     let string_for_correct_time = vec_for_correct_time.join("\n");
     file_list_for_correct_time.write_str(&string_for_correct_time)?;
@@ -111,8 +113,8 @@ pub fn compare_folders(
     ui_tx: std::sync::mpsc::Sender<String>,
     string_list_source_folders: &str,
     string_list_destination_folders: &str,
-    file_list_for_trash_folders: &mut crate::FileTxt,
-    file_list_for_create_folders: &mut crate::FileTxt,
+    file_list_for_trash_folders: &mut FileTxt,
+    file_list_for_create_folders: &mut FileTxt,
 ) -> Result<(), LibError> {
     let vec_list_source_folders: Vec<&str> = string_list_source_folders.lines().collect();
     let vec_list_destination_folders: Vec<&str> = string_list_destination_folders.lines().collect();

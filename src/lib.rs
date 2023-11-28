@@ -17,7 +17,7 @@ pub use crate::app_state_mod::{global_app_state, global_config, AppConfig, AppSt
 pub use crate::compare_mod::{compare_files, compare_folders};
 pub use crate::error_mod::LibError;
 pub use crate::file_txt_mod::FileTxt;
-pub use crate::local_disk_mod::{list_local, read_only_remove};
+pub use crate::local_disk_mod::{create_folders, list_local, move_or_rename_local_files, read_only_remove};
 pub use crate::remote_dropbox_mod::{encode_token, list_remote, test_connection};
 pub use crate::utils_mod::{shorten_string, sort_string_lines};
 

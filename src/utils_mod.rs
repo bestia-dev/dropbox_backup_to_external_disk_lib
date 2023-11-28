@@ -17,7 +17,7 @@ pub fn println_to_ui_thread(ui_tx: &std::sync::mpsc::Sender<String>, string: Str
 /// println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println!
 /// It panics if there is a bug in the code. This is not a recoverable error.
 pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: String) {
-    ui_tx.send((string, thread_name)).expect("Error mpsc send");
+    ui_tx.send((string, thread_name)).expect("Bug: mpsc send");
 }
 /*
 use std::io::Read;
@@ -161,13 +161,25 @@ pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> usize {
 /// sort string lines case insensitive
 pub fn sort_string_lines(output_string: &str) -> String {
     let mut sorted_local: Vec<&str> = output_string.lines().collect();
+
     use rayon::prelude::*;
     sorted_local.par_sort_unstable_by(|a, b| {
         let aa: &UncasedStr = (*a).into();
         let bb: &UncasedStr = (*b).into();
         aa.cmp(bb)
     });
-
     // return
     sorted_local.join("\n")
+}
+
+/// sort list case insensitive
+pub fn sort_list(mut list: Vec<String>) -> String {
+    use rayon::prelude::*;
+    list.par_sort_unstable_by(|a, b| {
+        let aa: &uncased::UncasedStr = a.as_str().into();
+        let bb: &uncased::UncasedStr = b.as_str().into();
+        aa.cmp(bb)
+    });
+    // join to string and write to file
+    list.join("\n")
 }

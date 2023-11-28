@@ -127,17 +127,17 @@ fn task_build() {
 
 /// cargo build --release
 fn task_release() {
-    let cargo_toml = CargoToml::read();
+    let _cargo_toml = CargoToml::read();
     auto_version_increment_semver_or_date();
     auto_cargo_toml_to_md();
     auto_lines_of_code("");
 
     run_shell_command("cargo fmt");
     run_shell_command("cargo build --release");
-    run_shell_command(&format!(
+/*     run_shell_command(&format!(
         "strip target/release/{package_name}",
         package_name = cargo_toml.package_name()
-    ));
+    )); */
     println!(
         r#"
     {YELLOW}After `cargo auto release`, run the project for the binary, examples and/or tests{RESET}

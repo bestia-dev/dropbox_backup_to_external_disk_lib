@@ -10,8 +10,7 @@ pub struct FileTxt {
 
 impl FileTxt {
     /// if file not exist, returns error
-    pub fn open_for_read(path: &str) -> std::io::Result<Self> {
-        let path = std::path::Path::new(path);
+    pub fn open_for_read(path: &Path) -> std::io::Result<Self> {
         let file = std::fs::File::options().read(true).open(path)?;
         Ok(FileTxt {
             file_txt: file,
@@ -20,8 +19,7 @@ impl FileTxt {
     }
 
     /// if file not exist, it creates it
-    pub fn open_for_read_and_write(path: &str) -> std::io::Result<Self> {
-        let path = std::path::Path::new(path);
+    pub fn open_for_read_and_write(path: &Path) -> std::io::Result<Self> {
         if !path.exists() {
             std::fs::File::create(path).unwrap();
         }

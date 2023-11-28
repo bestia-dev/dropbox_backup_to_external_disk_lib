@@ -1,21 +1,23 @@
 // app_state_mod.rs
 
+use std::path::Path;
+
 use crate::error_mod::LibError;
 
 #[derive(Debug)]
 pub struct AppConfig {
-    pub path_list_ext_disk_base_path: &'static str,
-    pub path_list_source_files: &'static str,
-    pub path_list_destination_files: &'static str,
-    pub path_list_source_folders: &'static str,
-    pub path_list_destination_folders: &'static str,
-    pub path_list_destination_readonly_files: &'static str,
-    pub path_list_for_download: &'static str,
-    pub path_list_for_trash: &'static str,
-    pub path_list_for_correct_time: &'static str,
-    pub path_list_just_downloaded_or_moved: &'static str,
-    pub path_list_for_trash_folders: &'static str,
-    pub path_list_for_create_folders: &'static str,
+    pub path_list_ext_disk_base_path: &'static Path,
+    pub path_list_source_files: &'static Path,
+    pub path_list_destination_files: &'static Path,
+    pub path_list_source_folders: &'static Path,
+    pub path_list_destination_folders: &'static Path,
+    pub path_list_destination_readonly_files: &'static Path,
+    pub path_list_for_download: &'static Path,
+    pub path_list_for_trash: &'static Path,
+    pub path_list_for_correct_time: &'static Path,
+    pub path_list_just_downloaded_or_moved: &'static Path,
+    pub path_list_for_trash_folders: &'static Path,
+    pub path_list_for_create_folders: &'static Path,
 }
 
 /// This trait defines what functions must the bin project implement then the lib project can use them.  
@@ -49,5 +51,5 @@ pub fn global_config() -> &'static AppConfig {
 }
 
 pub fn global_app_state() -> &'static Box<dyn AppStateMethods> {
-    APP_STATE.get().expect("OnceCell must not be empty.")
+    APP_STATE.get().expect("Bug: OnceCell must not be empty.")
 }
