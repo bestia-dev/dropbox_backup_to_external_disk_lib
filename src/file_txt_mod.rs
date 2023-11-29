@@ -52,7 +52,7 @@ impl FileTxt {
     }
 
     /// write str to file (append)
-    pub fn write_str(&mut self, str: &str) -> std::io::Result<()> {
+    pub fn write_append_str(&mut self, str: &str) -> std::io::Result<()> {
         std::io::Write::write_all(&mut self.file_txt, str.as_bytes())?;
         Ok(())
     }

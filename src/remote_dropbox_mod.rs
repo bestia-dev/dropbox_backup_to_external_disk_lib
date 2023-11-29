@@ -124,11 +124,11 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
 
     println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0".to_string());
     let string_file_list = crate::utils_mod::sort_list(file_list_all);
-    file_list_source_files.write_str(&string_file_list)?;
+    file_list_source_files.write_append_str(&string_file_list)?;
 
     println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0".to_string());
     let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
-    file_list_source_folders.write_str(&string_folder_list)?;
+    file_list_source_folders.write_append_str(&string_folder_list)?;
 
     Ok(())
 }

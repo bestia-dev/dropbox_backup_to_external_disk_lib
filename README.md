@@ -5,17 +5,17 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **One way sync from dropbox to external disc**  
-***version: 2.1.48 date: 2023-11-29 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
+***version: 2.1.52 date: 2023-11-29 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
 
 [//]: # (auto_cargo_toml_to_md end)
 
-![status](https://img.shields.io/badge/maintained-green) 
-![status](https://img.shields.io/badge/work_in_progress-yellow) 
+ ![status](https://img.shields.io/badge/maintained-green)
+ ![status](https://img.shields.io/badge/work_in_progress-yellow)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1410-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1404-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-93-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-187-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-179-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
@@ -26,16 +26,16 @@
 ![Hits](https://bestia.dev/webpage_hit_counter/get_svg_image/584868797.svg)
 
 Hashtags: #rustlang #tutorial #dropbox #cli #tui  
-My projects on Github are more like a tutorial than a finished product: [bestia-dev tutorials](https://github.com/bestia-dev/tutorials_rust_wasm).
+My projects on GitHub are more like a tutorial than a finished product: [bestia-dev tutorials](https://github.com/bestia-dev/tutorials_rust_wasm).
 
 ## Library project
 
-This is the library project that contains all the programming logic, but none of the user-interface. I will create different projects that contain only the user interface for this library. It will be different user-interfaces to show how the same library can be used in different environments.  
+This is the library project that contains all the programming logic, but none of the user interface. I will create different projects that contain only the user interface for this library. It will be different user interfaces to show how the same library can be used in different environments.  
 
 ## Motivation
 
 On my Dropbox "remote drive" I have more than 1 Terabyte of data in 200 000 files.  
-I own now 4 notebooks and 2 android phones and 1 tablet and not a single one has an internal drive with more than 1 Terabyte. I use dropbox `Selective Sync` to sync only the bare minimum I temporarily need on the local device. But I want to have a backup of all of my data. I must have a backup. Better, I want to have 2 backups of all the data on 2 external hard disks in different locations. So if Dropbox go bankrupt, I still have all my data.  
+I own now 4 notebooks, 2 android phones and 1 tablet and not a single one has an internal drive with more than 1 Terabyte. I use Dropbox `Selective Sync`` to sync only the bare minimum I temporarily need on the local device. But I want to have a backup of all of my data. I must have a backup. Better, I want to have 2 backups of all the data on 2 external hard disks in different locations. So if Dropbox go bankrupt, I still have all my data.  
 The original Dropbox Sync app works great for the internal HD, but is "not recommended" for external drives. I also need only one way sync: from remote to local. There exist apps for that:
 
 - rclone
@@ -63,10 +63,10 @@ TODO: If possible copy the local file that is synced with Dropbox instead of dow
 The sorting of lists is also done in parallel with the crate Rayon.  
 Once the lists are complete the CLI will compare them and create files:  
 `list_for_download.csv`  
-`list_for_trash.csv`  
+`list_for_trash_files.csv`  
 With this files the CLI will:  
 `move_or_rename_local_files` if (name, size and file date) are equal, or (size, date and content_hash)
-`trash_from_list` will move the obsolete files into a trash folder  
+`trash_files` will move the obsolete files into a trash folder  
 `download_from_list` - this can take a lot of time and it can be stopped with ctrl+c
 
 ## DropBox api2 - Stone sdk
@@ -78,7 +78,7 @@ For Rust there is this quasi official project:
 ## rename or move
 
 Often a file is renamed or moved to another folder.  
-I can try to recognize if there is the same file in list_for_trash and list_for_download.  
+I can try to recognize if there is the same file in list_for_trash_files and list_for_download.  
 If the name, size and file date are equal then they are probably the same file.  
 If the name is different, then try if content_hash is equal, but that is slow.  
 

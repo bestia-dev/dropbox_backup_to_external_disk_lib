@@ -89,9 +89,9 @@ pub fn list_local(
     let folders_sorted_string = crate::sort_string_lines(&folders_string);
     let readonly_files_sorted_string = crate::sort_string_lines(&readonly_files_string);
     // end region: sort
-    file_list_destination_files.write_str(&files_sorted_string)?;
-    file_list_destination_folders.write_str(&folders_sorted_string)?;
-    file_list_destination_readonly_files.write_str(&readonly_files_sorted_string)?;
+    file_list_destination_files.write_append_str(&files_sorted_string)?;
+    file_list_destination_folders.write_append_str(&folders_sorted_string)?;
+    file_list_destination_readonly_files.write_append_str(&readonly_files_sorted_string)?;
 
     println_to_ui_thread_with_thread_name(&ui_tx, "All lists stored in files.".to_string(), "L0".to_string());
 
@@ -168,46 +168,59 @@ pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, base_path: &Path, 
 }
 
 /// Files are often moved or renamed
-/// After compare, the same file (with different path or name) will be in the list_for_trash and in the list_for_download.
+/// After compare, the same file (with different path or name) will be in the list_for_trash_files and in the list_for_download.
 /// First for every trash line, we search list_for_download for same size and modified.
 /// If found, get the remote_metadata with content_hash and calculate local_content_hash.
 /// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.
-/// Remove also the lines in files list_for_trash and list_for_download.
-pub fn move_or_rename_local_files(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash: &mut FileTxt, file_list_for_download: &mut FileTxt) -> Result<(), LibError> {
-    let list_for_trash = file_list_for_trash.read_to_string()?;
+/// Remove also the lines in files list_for_trash_files and list_for_download.
+pub fn move_or_rename_local_files(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &Path,
+    file_list_for_trash_files: &mut FileTxt,
+    file_list_for_download: &mut FileTxt,
+) -> Result<(), LibError> {
+    let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
-    let mut vec_list_for_trash: Vec<&str> = list_for_trash.lines().collect();
+    let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_name(ui_tx.clone(), ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
+    match move_or_rename_local_files_internal_by_name(ui_tx.clone(), ext_disk_base_path, &mut vec_list_for_trash_files, &mut vec_list_for_download) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk and continue
-            file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
-            file_list_for_download.write_str(&vec_list_for_download.join("\n"))?;
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash_files.join("\n"))?;
+            file_list_for_download.empty()?;
+            file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
         }
         Err(err) => {
             // also in case of error, write the actual situation to disk and return error
-            file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
-            file_list_for_download.write_str(&vec_list_for_download.join("\n"))?;
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash_files.join("\n"))?;
+            file_list_for_download.empty()?;
+            file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
             return Err(err);
         }
     }
 
-    let list_for_trash = file_list_for_trash.read_to_string()?;
+    let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
-    let mut vec_list_for_trash: Vec<&str> = list_for_trash.lines().collect();
+    let mut vec_list_for_trash: Vec<&str> = list_for_trash_files.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
     match move_or_rename_local_files_internal_by_hash(ui_tx, ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk
-            file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
-            file_list_for_download.write_str(&vec_list_for_download.join("\n"))?;
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash.join("\n"))?;
+            file_list_for_download.empty()?;
+            file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
         }
         Err(err) => {
             // also in case of error, write the actual situation to disk
-            file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
-            file_list_for_download.write_str(&vec_list_for_download.join("\n"))?;
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash.join("\n"))?;
+            file_list_for_download.empty()?;
+            file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
             return Err(err);
         }
     }
@@ -228,19 +241,19 @@ fn move_or_rename_local_files_internal_by_name(
     let vec_list_for_download_clone = vec_list_for_download.clone();
     let mut last_send_ms = std::time::Instant::now();
 
-    for line_for_trash in vec_list_for_trash_clone.iter() {
-        let vec_line_for_trash: Vec<&str> = line_for_trash.split("\t").collect();
-        let string_path_for_trash = vec_line_for_trash[0];
-        let path_global_to_trash = ext_disk_base_path.join(string_path_for_trash.trim_start_matches("/"));
+    for line_for_trash_files in vec_list_for_trash_clone.iter() {
+        let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
+        let string_path_for_trash_files = vec_line_for_trash[0];
+        let path_global_to_trash_files = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
         // if path does not exist ignore, probably it eas moved or trashed earlier
-        if path_global_to_trash.exists() {
-            let modified_for_trash = vec_line_for_trash[1];
-            let size_for_trash = vec_line_for_trash[2];
-            let file_name_for_trash = string_path_for_trash
+        if path_global_to_trash_files.exists() {
+            let modified_for_trash_files = vec_line_for_trash[1];
+            let size_for_trash_files = vec_line_for_trash[2];
+            let file_name_for_trash_files = string_path_for_trash_files
                 .split("/")
                 .collect::<Vec<&str>>()
                 .last()
-                .expect("Bug: file_name_for_trash must be splitted and not empty")
+                .expect("Bug: file_name_for_trash_files must be splitted and not empty")
                 .to_string();
 
             // search in list_for_download for possible candidates
@@ -265,10 +278,10 @@ fn move_or_rename_local_files_internal_by_name(
                     .to_string();
                 let path_global_to_download = ext_disk_base_path.join(string_path_for_download.trim_start_matches("/"));
 
-                if modified_for_trash == modified_for_download && size_for_trash == size_for_download && file_name_for_trash == file_name_for_download {
-                    move_internal(&ui_tx, &path_global_to_trash, &path_global_to_download)?;
+                if modified_for_trash_files == modified_for_download && size_for_trash_files == size_for_download && file_name_for_trash_files == file_name_for_download {
+                    move_internal(&ui_tx, &path_global_to_trash_files, &path_global_to_download)?;
                     // remove the lines from the original mut Vec
-                    vec_list_for_trash.retain(|line| line != line_for_trash);
+                    vec_list_for_trash.retain(|line| line != line_for_trash_files);
                     vec_list_for_download.retain(|line| line != line_for_download);
 
                     count_moved += 1;
@@ -296,14 +309,14 @@ fn move_or_rename_local_files_internal_by_hash(
     let vec_list_for_download_clone = vec_list_for_download.clone();
     let mut last_send_ms = std::time::Instant::now();
 
-    for line_for_trash in vec_list_for_trash_clone.iter() {
-        let vec_line_for_trash: Vec<&str> = line_for_trash.split("\t").collect();
-        let string_path_for_trash = vec_line_for_trash[0];
-        let path_global_to_trash = ext_disk_base_path.join(string_path_for_trash.trim_start_matches("/"));
+    for line_for_trash_files in vec_list_for_trash_clone.iter() {
+        let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
+        let string_path_for_trash_files = vec_line_for_trash[0];
+        let path_global_to_trash_files = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
         // if path does not exist ignore, probably it eas moved or trashed earlier
-        if path_global_to_trash.exists() {
-            let modified_for_trash = vec_line_for_trash[1];
-            let size_for_trash = vec_line_for_trash[2];
+        if path_global_to_trash_files.exists() {
+            let modified_for_trash_files = vec_line_for_trash[1];
+            let size_for_trash_files = vec_line_for_trash[2];
 
             for line_for_download in vec_list_for_download_clone.iter() {
                 // Every 1 second write a dot, to see it still works like a progress bar
@@ -319,15 +332,15 @@ fn move_or_rename_local_files_internal_by_hash(
                 let size_for_download = vec_line_for_download[2];
                 let path_global_to_download = ext_disk_base_path.join(string_path_for_download.trim_start_matches("/"));
 
-                if modified_for_trash == modified_for_download && size_for_trash == size_for_download {
+                if modified_for_trash_files == modified_for_download && size_for_trash_files == size_for_download {
                     // same size and date. Let's check the content_hash to be sure.
-                    let local_content_hash = format!("{:x}", DropboxContentHasher::hash_file(&path_global_to_trash)?);
+                    let local_content_hash = format!("{:x}", DropboxContentHasher::hash_file(&path_global_to_trash_files)?);
                     let remote_content_hash = get_content_hash(string_path_for_download)?;
 
                     if local_content_hash == remote_content_hash {
-                        move_internal(&ui_tx, &path_global_to_trash, &path_global_to_download)?;
+                        move_internal(&ui_tx, &path_global_to_trash_files, &path_global_to_download)?;
                         // remove the lines from the original mut Vec
-                        vec_list_for_trash.retain(|line| line != line_for_trash);
+                        vec_list_for_trash.retain(|line| line != line_for_trash_files);
                         vec_list_for_download.retain(|line| line != line_for_download);
                         count_moved += 1;
                         break;
@@ -375,97 +388,83 @@ fn get_content_hash(path_for_download: &str) -> Result<String, LibError> {
     Ok(crate::remote_dropbox_mod::remote_content_hash(path_for_download, &client).expect("Bug: dropbox metadata must have hash."))
 }
 
-/*
-
-/// Move to trash folder the files from list_for_trash.
+/// Move to trash folder the files from list_for_trash_files.
 /// Ignore if the file does not exist anymore.
-pub fn trash_from_list(app_config: &'static AppConfig) {
-    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-    let path_list_local_files = app_config.path_list_destination_files;
-    trash_from_list_internal(&base_local_path, app_config.path_list_for_trash, path_list_local_files);
+pub fn trash_files(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash_files: &mut FileTxt) -> Result<(), LibError> {
+    let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
+    let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
+
+    match trash_files_internal(ui_tx.clone(), ext_disk_base_path, &mut vec_list_for_trash_files) {
+        Ok(()) => {
+            // in case all is ok, write actual situation to disk and continue
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash_files.join("\n"))?;
+        }
+        Err(err) => {
+            // also in case of error, write the actual situation to disk and return error
+            file_list_for_trash_files.empty()?;
+            file_list_for_trash_files.write_append_str(&vec_list_for_trash_files.join("\n"))?;
+            return Err(err);
+        }
+    }
+    Ok(())
 }
 
 /// internal
-pub fn trash_from_list_internal(base_local_path: &str, path_list_for_trash: &str, path_list_local_files: &str) {
-    let list_for_trash = fs::read_to_string(path_list_for_trash).unwrap();
-    if list_for_trash.is_empty() {
-        println!("{}: 0", path_list_for_trash);
-    } else {
-        let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
-        let base_trash_path = format!("{}_{}", base_local_path, &now_string);
-        if !path::Path::new(&base_trash_path).exists() {
-            fs::create_dir_all(&base_trash_path).unwrap();
-        }
-        //move the files in the same directory structure
-        for line_path_for_trash in list_for_trash.lines() {
-            let line: Vec<&str> = line_path_for_trash.split("\t").collect();
-            let string_path_for_trash = line[0];
-            let move_from = format!("{}{}", base_local_path, string_path_for_trash);
-            let path_move_from = path::Path::new(&move_from);
-            // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move_to_trash before.
-            if path_move_from.exists() {
-                let move_to = format!("{}{}", base_trash_path, string_path_for_trash);
-                println!("{}  ->  {}", move_from, move_to);
-                let parent = unwrap!(path::Path::parent(path::Path::new(&move_to)));
-                if !parent.exists() {
-                    fs::create_dir_all(&parent).unwrap();
-                }
-                unwrap!(fs::rename(&move_from, &move_to));
-            }
-        }
-
-        // remove lines from list_destination_files.csv
-        let string_local_files = fs::read_to_string(path_list_local_files).unwrap();
-        let vec_sorted_local: Vec<&str> = string_local_files.lines().collect();
-        // I must create a new vector.
-        let mut string_new_local = String::with_capacity(string_local_files.len());
-        println!("sorting local list... It will take a minute or two.");
-        for line in vec_sorted_local {
-            if !list_for_trash.contains(line) {
-                string_new_local.push_str(line);
-                string_new_local.push_str("\n");
-            }
-        }
-        // save the new local
-        unwrap!(fs::write(path_list_local_files, &string_new_local));
-
-        // empty the list if all is successful
-        // println!("empty the list if all is successful");
-        unwrap!(fs::write(path_list_for_trash, ""));
+fn trash_files_internal(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, vec_list_for_trash_files: &mut Vec<&str>) -> Result<(), LibError> {
+    let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
+    let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
+    // the trash folder will be inside DropBoxBackup because of permissions
+    let base_trash_path = ext_disk_base_path.join(&now_string);
+    if !base_trash_path.exists() {
+        std::fs::create_dir_all(&base_trash_path)?;
     }
+    //move the files in the same directory structure
+    for line_path_for_trash_files in vec_list_for_trash_clone.iter() {
+        let line: Vec<&str> = line_path_for_trash_files.split("\t").collect();
+        let string_path_for_trash_files = line[0];
+        let path_move_from = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
+        // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move to trash before.
+        if path_move_from.exists() {
+            let path_move_to = base_trash_path.join(string_path_for_trash_files.trim_start_matches("/"));
+            println_to_ui_thread(&ui_tx, format!("{}", path_move_from.to_string_lossy()));
+            let parent = path_move_to.parent().expect("Bug: parent must exist");
+            if !parent.exists() {
+                std::fs::create_dir_all(&parent).unwrap();
+            }
+            std::fs::rename(&path_move_from, &path_move_to)?;
+        }
+        vec_list_for_trash_files.retain(|line| line != line_path_for_trash_files);
+    }
+    Ok(())
 }
-
-
-
-
 
 /// Move to trash folder the folders from list_for_trash_folders.
-pub fn trash_folders(file_list_for_trash_folders: &mut FileTxt, base_path: &str) {
-    let list_for_trash_folders = file_list_for_trash_folders.read_to_string().unwrap();
-    if list_for_trash_folders.is_empty() {
-        println!("list_for_trash_folders is empty");
-    } else {
-        let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
-        let base_trash_path = format!("{}_{}", base_path, &now_string);
-        if !path::Path::new(&base_trash_path).exists() {
-            fs::create_dir_all(&base_trash_path).unwrap();
-        }
-        for string_path_for_trash in list_for_trash_folders.lines() {
-            let move_from = format!("{}{}", base_path, string_path_for_trash);
-            let path_move_from = path::Path::new(&move_from);
-
-            // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move_to_trash before.
-            if path_move_from.exists() {
-                let move_to = format!("{}{}", base_trash_path, string_path_for_trash);
-                println!("{}  ->  {}", move_from, move_to);
-                let parent = unwrap!(path::Path::parent(path::Path::new(&move_to)));
-                if !parent.exists() {
-                    fs::create_dir_all(&parent).unwrap();
-                }
-                unwrap!(fs::rename(&move_from, &move_to));
-            }
-        }
-        file_list_for_trash_folders.empty().unwrap();
+pub fn trash_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash_folders: &mut FileTxt) -> Result<(), LibError> {
+    let list_for_trash_folders = file_list_for_trash_folders.read_to_string()?;
+    let mut vec_list_for_trash_folders: Vec<&str> = list_for_trash_folders.lines().collect();
+    let vec_list_for_trash_clone = vec_list_for_trash_folders.clone();
+    let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
+    let base_trash_path_folders = ext_disk_base_path.join(&now_string);
+    if !base_trash_path_folders.exists() {
+        std::fs::create_dir_all(&base_trash_path_folders).unwrap();
     }
+    for string_path_for_trash_folders in vec_list_for_trash_clone.iter() {
+        let path_move_from = ext_disk_base_path.join(string_path_for_trash_folders.trim_start_matches("/"));
+        // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move to trash before.
+        if path_move_from.exists() {
+            let path_move_to = base_trash_path_folders.join(string_path_for_trash_folders.trim_start_matches("/"));
+            println_to_ui_thread(&ui_tx, format!("{}", path_move_from.to_string_lossy()));
+            let parent = path_move_to.parent().expect("Bug: parent must exist");
+            if !parent.exists() {
+                std::fs::create_dir_all(&parent)?;
+            }
+            std::fs::rename(&path_move_from, &path_move_to)?;
+        }
+        vec_list_for_trash_folders.retain(|line| line != string_path_for_trash_folders);
+    }
+    file_list_for_trash_folders.empty()?;
+    file_list_for_trash_folders.write_append_str(&vec_list_for_trash_folders.join("\n"))?;
+
+    Ok(())
 }
- */

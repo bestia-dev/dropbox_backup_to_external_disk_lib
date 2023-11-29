@@ -6,7 +6,7 @@ use crate::{utils_mod::println_to_ui_thread, FileTxt, LibError};
 use chrono::{DateTime, Utc};
 use uncased::UncasedStr;
 
-/// compare list: the lists and produce list_for_download, list_for_trash
+/// compare list: the lists and produce list_for_download, list_for_trash_files
 pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<(), LibError> {
     //add_just_downloaded_to_list_local(app_config);
     compare_lists_internal(
@@ -14,7 +14,7 @@ pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'stati
         app_config.path_list_source_files,
         app_config.path_list_destination_files,
         app_config.path_list_for_download,
-        app_config.path_list_for_trash,
+        app_config.path_list_for_trash_files,
     )?;
     Ok(())
 }
@@ -93,12 +93,12 @@ fn compare_lists_internal(
     let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_downloads.file_name(), vec_for_download.len()));
     let string_for_download = vec_for_download.join("\n");
-    file_list_for_downloads.write_str(&string_for_download)?;
+    file_list_for_downloads.write_append_str(&string_for_download)?;
 
-    let mut file_list_for_trash = FileTxt::open_for_read_and_write(path_list_for_trash)?;
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash.file_name(), vec_for_trash.len()));
-    let string_for_trash = vec_for_trash.join("\n");
-    file_list_for_trash.write_str(&string_for_trash)?;
+    let mut file_list_for_trash_files = FileTxt::open_for_read_and_write(path_list_for_trash)?;
+    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash_files.file_name(), vec_for_trash.len()));
+    let string_for_trash_files = vec_for_trash.join("\n");
+    file_list_for_trash_files.write_append_str(&string_for_trash_files)?;
 
     Ok(())
 }
@@ -125,16 +125,13 @@ pub fn compare_folders(
     loop {
         if cursor_source >= vec_list_source_folders.len() && cursor_destination >= vec_list_destination_folders.len() {
             // all lines are processed
-            //dbg!("break");
             break;
         } else if cursor_destination >= vec_list_destination_folders.len() {
             // final lines
-            //dbg!("final create_empty_folders ", vec_list_source_folders[cursor_source]);
             vec_for_create.push(vec_list_source_folders[cursor_source].to_string());
             cursor_source += 1;
         } else if cursor_source >= vec_list_source_folders.len() {
             // final lines
-            //dbg!("final trash ", vec_list_destination_folders[cursor_destination]);
             vec_for_trash.push(vec_list_destination_folders[cursor_destination].to_string());
             cursor_destination += 1;
         } else {
@@ -143,27 +140,24 @@ pub fn compare_folders(
             let path_source: &UncasedStr = vec_list_source_folders[cursor_source].into();
             let path_destination: &UncasedStr = vec_list_destination_folders[cursor_destination].into();
             if path_source.lt(path_destination) {
-                //dbg!("create_empty_folders {}", vec_list_source_folders[cursor_source]);
                 vec_for_create.push(vec_list_source_folders[cursor_source].to_string());
                 cursor_source += 1;
             } else if path_source.gt(path_destination) {
-                //dbg!("trash {}", vec_list_destination_folders[cursor_destination]);
                 vec_for_trash.push(vec_list_destination_folders[cursor_destination].to_string());
                 cursor_destination += 1;
             } else {
                 // else no action, just increment cursors
-                // dbg!("same lines, just increment");
                 cursor_destination += 1;
                 cursor_source += 1;
             }
         }
     }
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash_folders.file_name(), vec_for_trash.len()));
-    let string_for_trash = vec_for_trash.join("\n");
-    file_list_for_trash_folders.write_str(&string_for_trash)?;
+    let string_for_trash_files = vec_for_trash.join("\n");
+    file_list_for_trash_folders.write_append_str(&string_for_trash_files)?;
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_create_folders.file_name(), vec_for_create.len()));
     let string_for_create = vec_for_create.join("\n");
-    file_list_for_create_folders.write_str(&string_for_create)?;
+    file_list_for_create_folders.write_append_str(&string_for_create)?;
     Ok(())
 }
 
