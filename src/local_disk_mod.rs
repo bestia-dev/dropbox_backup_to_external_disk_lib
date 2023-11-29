@@ -27,7 +27,7 @@ use crate::{
 /// It uses the global APP_STATE for all config data
 pub fn list_local(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    base_path: String,
+    ext_disk_base_path: String,
     mut file_list_destination_files: FileTxt,
     mut file_list_destination_folders: FileTxt,
     mut file_list_destination_readonly_files: FileTxt,
@@ -46,7 +46,7 @@ pub fn list_local(
     let mut folder_count = 0;
     let mut file_count = 0;
     let mut last_send_ms = std::time::Instant::now();
-    for entry in WalkDir::new(&base_path) {
+    for entry in WalkDir::new(&ext_disk_base_path) {
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
@@ -54,11 +54,11 @@ pub fn list_local(
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
             // I don't need the "base" folder in this list
-            if !str_path.trim_start_matches(&base_path).is_empty() {
-                folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
+            if !str_path.trim_start_matches(&ext_disk_base_path).is_empty() {
+                folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&ext_disk_base_path),));
                 // TODO: don't print every folder, because print is slow. Check if 100ms passed
                 if last_send_ms.elapsed().as_millis() >= 100 {
-                    println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&base_path), 80)), format!("L0"));
+                    println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&ext_disk_base_path), 80)), "L0");
 
                     last_send_ms = std::time::Instant::now();
                 }
@@ -73,16 +73,21 @@ pub fn list_local(
                 let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
 
                 if metadata.permissions().readonly() {
-                    readonly_files_string.push_str(&format!("{}\n", str_path.trim_start_matches(&base_path),));
+                    readonly_files_string.push_str(&format!("{}\n", str_path.trim_start_matches(&ext_disk_base_path),));
                 }
-                files_string.push_str(&format!("{}\t{}\t{}\n", str_path.trim_start_matches(&base_path), datetime.format("%Y-%m-%dT%TZ"), metadata.len()));
+                files_string.push_str(&format!(
+                    "{}\t{}\t{}\n",
+                    str_path.trim_start_matches(&ext_disk_base_path),
+                    datetime.format("%Y-%m-%dT%TZ"),
+                    metadata.len()
+                ));
 
                 file_count += 1;
             }
         }
     }
 
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("local_folder_count: {folder_count}"), "L0".to_string());
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("local_folder_count: {folder_count}"), "L0");
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -93,19 +98,19 @@ pub fn list_local(
     file_list_destination_folders.write_append_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_append_str(&readonly_files_sorted_string)?;
 
-    println_to_ui_thread_with_thread_name(&ui_tx, "All lists stored in files.".to_string(), "L0".to_string());
+    println_to_ui_thread_with_thread_name(&ui_tx, "All lists stored in files.".to_string(), "L0");
 
     Ok(())
 }
 
 /// The backup files must not be readonly to allow copying the modified file from the remote.
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
-pub fn read_only_remove(ui_tx: std::sync::mpsc::Sender<String>, base_path: &Path, file_destination_readonly_files: &mut FileTxt) -> Result<(), LibError> {
+pub fn read_only_remove(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_destination_readonly_files: &mut FileTxt) -> Result<(), LibError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
     let mut warning_shown_already = false;
     let mut there_is_a_readonly_files = false;
     for string_path_for_readonly in list_destination_readonly_files.lines() {
-        let path_global_path_to_readonly = base_path.join(string_path_for_readonly.trim_start_matches("/"));
+        let path_global_path_to_readonly = ext_disk_base_path.join(string_path_for_readonly.trim_start_matches("/"));
         // if path does not exist ignore
         if path_global_path_to_readonly.exists() {
             let mut perms = path_global_path_to_readonly.metadata()?.permissions();
@@ -149,13 +154,13 @@ You have to do it manually in PowerShell.";
 }
 
 /// create new empty folders
-pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, base_path: &Path, file_list_for_create_folders: &mut FileTxt) -> Result<(), LibError> {
+pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_create_folders: &mut FileTxt) -> Result<(), LibError> {
     let list_for_create_folders = file_list_for_create_folders.read_to_string()?;
     if list_for_create_folders.is_empty() {
         println_to_ui_thread(&ui_tx, format!("list_for_create_folders is empty"));
     } else {
         for string_path in list_for_create_folders.lines() {
-            let path_global_path = base_path.join(string_path.trim_start_matches("/"));
+            let path_global_path = ext_disk_base_path.join(string_path.trim_start_matches("/"));
             // if path exists ignore
             if !path_global_path.exists() {
                 println_to_ui_thread(&ui_tx, path_global_path.to_string_lossy().to_string());

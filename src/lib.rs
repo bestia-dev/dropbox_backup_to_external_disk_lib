@@ -18,25 +18,25 @@ pub use crate::compare_mod::{compare_files, compare_folders};
 pub use crate::error_mod::LibError;
 pub use crate::file_txt_mod::FileTxt;
 pub use crate::local_disk_mod::{create_folders, list_local, move_or_rename_local_files, read_only_remove, trash_files, trash_folders};
-pub use crate::remote_dropbox_mod::{encode_token, list_remote, test_connection};
+pub use crate::remote_dropbox_mod::{download_one_file, encode_token, list_remote, test_connection};
 pub use crate::utils_mod::{shorten_string, sort_string_lines};
 
 /*
 /// list and sync is the complete process for backup in one command
-pub fn list_and_sync(base_path: &str, app_config: &'static AppConfig) {
-    all_list_remote_and_local(base_path, app_config);
+pub fn list_and_sync(ext_disk_base_path: &str, app_config: &'static AppConfig) {
+    all_list_remote_and_local(ext_disk_base_path, app_config);
     press_enter_to_continue_timeout_5_sec();
     sync_only(app_config);
 }
 
 /// all list remote and local
-pub fn all_list_remote_and_local(base_path: &str, app_config: &'static AppConfig) {
+pub fn all_list_remote_and_local(ext_disk_base_path: &str, app_config: &'static AppConfig) {
     let _hide_cursor_terminal = crate::start_hide_cursor_terminal();
     println!("{}{}dropbox_backup_to_external_disk_cli list_and_sync{}", at_line(1), *YELLOW, *RESET);
     ns_start("");
     // start 2 threads, first for remote list and second for local list
     use std::thread;
-    let base_path = base_path.to_string();
+    let ext_disk_base_path = ext_disk_base_path.to_string();
     let handle_2 = thread::spawn(move || {
         println!("{}{}3 threads for source (remote files):{}", at_line(3), *GREEN, *RESET);
         // prints at rows 4,5,6 and 7,8,9
@@ -45,7 +45,7 @@ pub fn all_list_remote_and_local(base_path: &str, app_config: &'static AppConfig
     let handle_1 = thread::spawn(move || {
         println!("{}{}1 thread for destination (local files):{}", at_line(12), *GREEN, *RESET);
         // prints at rows 13,14,15,16
-        list_local(&base_path, app_config);
+        list_local(&ext_disk_base_path, app_config);
     });
     // wait for both threads to finish
     handle_1.join().unwrap();

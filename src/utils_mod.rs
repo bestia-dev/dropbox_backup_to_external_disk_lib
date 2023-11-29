@@ -16,8 +16,8 @@ pub fn println_to_ui_thread(ui_tx: &std::sync::mpsc::Sender<String>, string: Str
 
 /// println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println!
 /// It panics if there is a bug in the code. This is not a recoverable error.
-pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: String) {
-    ui_tx.send((string, thread_name)).expect("Bug: mpsc send");
+pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: &str) {
+    ui_tx.send((string, thread_name.to_string())).expect("Bug: mpsc send");
 }
 /*
 use std::io::Read;

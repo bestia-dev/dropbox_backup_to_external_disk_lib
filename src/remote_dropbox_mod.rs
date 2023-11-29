@@ -52,6 +52,7 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, L
 
 #[allow(unused_imports)]
 use std::collections::VecDeque;
+use std::path::Path;
 /* use std::env;
 use std::io::{self, Read, Write};
 use std::path; */
@@ -122,11 +123,11 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
         file_list_all.extend_from_slice(&file_list);
     }
 
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0".to_string());
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0");
     let string_file_list = crate::utils_mod::sort_list(file_list_all);
     file_list_source_files.write_append_str(&string_file_list)?;
 
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0".to_string());
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0");
     let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
     file_list_source_folders.write_append_str(&string_folder_list)?;
 
@@ -154,7 +155,7 @@ pub fn list_remote_folder(
                         let folder_path = entry.path_display.unwrap_or(entry.name);
                         // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                         if last_send_ms.elapsed().as_millis() >= 100 {
-                            println_to_ui_thread_with_thread_name(&ui_tx, format!("Folder: {}", crate::shorten_string(&folder_path, 80)), format!("R{thread_num}"));
+                            println_to_ui_thread_with_thread_name(&ui_tx, format!("Folder: {}", crate::shorten_string(&folder_path, 80)), &format!("R{thread_num}"));
                             last_send_ms = std::time::Instant::now();
                         }
                         folder_list.push(folder_path);
@@ -167,7 +168,7 @@ pub fn list_remote_folder(
                         if !file_path.ends_with("com.dropbox.attrs") {
                             // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                             if last_send_ms.elapsed().as_millis() >= 100 {
-                                println_to_ui_thread_with_thread_name(&ui_tx, format!("File: {}", crate::shorten_string(&file_path, 80)), format!("R{thread_num}"));
+                                println_to_ui_thread_with_thread_name(&ui_tx, format!("File: {}", crate::shorten_string(&file_path, 80)), &format!("R{thread_num}"));
                                 last_send_ms = std::time::Instant::now();
                             }
                             file_list.push(format!("{}\t{}\t{}", file_path, entry.client_modified, entry.size));
@@ -284,87 +285,65 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
     }
 }
 
-/*
 /// download one file
-pub fn download_one_file(path_to_download: &str, app_config: &'static AppConfig) {
-    let token = get_short_lived_access_token();
+pub fn download_one_file(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, path_to_download: &Path) -> Result<(), LibError> {
+    let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-    let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
-    // channel for inter-thread communication.
-    let (tx, rx) = mpsc::channel();
-    let path_to_download = path_to_download.to_string();
-    let _sender_thread = thread::spawn(move || {
-        let base_local_path_ref = &base_local_path;
-        let client_ref = &client;
-        let thread_num = 0;
-        let tx_clone2 = mpsc::Sender::clone(&tx);
-        download_internal(&path_to_download, client_ref, base_local_path_ref, thread_num, tx_clone2, x_screen_len, app_config);
-        drop(tx);
-    });
-    // the receiver reads all msgs from the queue, until all senders exist - drop(tx)
-    // only this thread writes to the terminal, to avoid race in cursor position
-    for msg in &rx {
-        let (string_to_print, thread_num) = msg;
-        if thread_num != -1 {
-            println!("\r{}{}", "\x1b[1F", &string_to_print);
-        } else {
-            println!("{}", &string_to_print);
-        }
-    }
+    let thread_num = 0;
+    download_internal(path_to_download, &client, ext_disk_base_path, thread_num, ui_tx)?;
+    Ok(())
 }
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
-    download_path: &str,
+    path_to_download: &Path,
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
-    base_local_path: &str,
+    ext_disk_base_path: &Path,
     thread_num: i32,
-    tx_clone: mpsc::Sender<(String, i32)>,
-    x_screen_len: u16,
-    app_config: &'static AppConfig,
-) {
-    //log::trace!("download_with_client: {}",download_path);
+    ui_tx: mpsc::Sender<(String, ThreadName)>,
+) -> Result<(), LibError> {
     let mut bytes_out = 0u64;
-    let download_arg = dropbox_sdk::files::DownloadArg::new(download_path.to_string());
-    log::trace!("download_arg: {}", &download_arg.path);
-    let local_path = format!("{}{}", base_local_path, download_path);
+    let thread_name = format!("R{thread_num}");
+    let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
+    dbg!(&download_arg.path);
+    let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
     // create folder if it does not exist
-    let path_of_local_path = path::PathBuf::from(&local_path);
-    let parent = path_of_local_path.parent().unwrap();
-    if !path::Path::new(&parent).exists() {
-        fs::create_dir_all(parent).unwrap();
+    let parent = local_path.parent().expect("Bug: Parent must exist.");
+    if !parent.exists() {
+        std::fs::create_dir_all(parent)?;
     }
-    let base_temp_download_path = format!("{}_temp_download", &base_local_path);
-    if !path::Path::new(&base_temp_download_path).exists() {
-        fs::create_dir_all(&base_temp_download_path).unwrap();
+    let base_temp_path_to_download = Path::new("temp_data");
+    if !base_temp_path_to_download.exists() {
+        std::fs::create_dir_all(&base_temp_path_to_download)?;
     }
-    let temp_local_path = format!("{}{}", base_temp_download_path, download_path);
+    let temp_local_path = base_temp_path_to_download.join(path_to_download.to_string_lossy().trim_start_matches("/"));
+    dbg!(&temp_local_path);
     // create temp folder if it does not exist
-    let temp_path = path::PathBuf::from(&temp_local_path);
-    let temp_parent = temp_path.parent().unwrap();
-    if !path::Path::new(&temp_parent).exists() {
-        fs::create_dir_all(temp_parent).unwrap();
+    let temp_parent = temp_local_path.parent().expect("Bug: Parent must exist.");
+    if !temp_parent.exists() {
+        std::fs::create_dir_all(temp_parent)?;
     }
 
-    let mut file = fs::OpenOptions::new().create(true).write(true).open(&temp_local_path).unwrap();
+    let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
 
     let mut modified: Option<filetime::FileTime> = None;
-    let mut s_modified = "".to_string();
+    let mut s_modified;
     // I will download to a temp folder and then move the file to the right folder only when the download is complete.
     'download: loop {
         let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
         match result {
             Ok(Ok(download_result)) => {
-                let mut body = download_result.body.expect("Bug: no body received!");
+                let mut body = download_result.body.expect("Bug: body must exist");
                 if modified.is_none() {
                     s_modified = download_result.result.client_modified.clone();
-                    modified = Some(filetime::FileTime::from_system_time(unwrap!(humantime::parse_rfc3339(&s_modified))));
+                    modified = Some(filetime::FileTime::from_system_time(humantime::parse_rfc3339(&s_modified)?));
                 };
                 loop {
                     // limit read to 1 MiB per loop iteration so we can output progress
+                    // let mut input_chunk = (&mut body).take(1_048_576);
+                    use std::io::Read;
                     let mut input_chunk = (&mut body).take(1_048_576);
-                    match io::copy(&mut input_chunk, &mut file) {
+                    match std::io::copy(&mut input_chunk, &mut file) {
                         Ok(0) => {
                             break 'download;
                         }
@@ -372,64 +351,47 @@ fn download_internal(
                             bytes_out += len as u64;
                             if let Some(total) = download_result.content_length {
                                 let string_to_print = format!(
-                                    "{}{:.01}% of {:.02} MB downloading {}",
-                                    *CLEAR_LINE,
+                                    "{:.01}% of {:.02} MB downloading {}",
                                     bytes_out as f64 / total as f64 * 100.,
                                     total as f64 / 1000000.,
-                                    shorten_string(download_path, x_screen_len - 31)
+                                    crate::shorten_string(&path_to_download.to_string_lossy(), 80)
                                 );
-                                unwrap!(tx_clone.send((string_to_print, thread_num)));
+                                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                             } else {
-                                let string_to_print = format!("{}{} MB downloaded {}", *CLEAR_LINE, bytes_out as f64 / 1000000., shorten_string(download_path, x_screen_len - 31));
-                                unwrap!(tx_clone.send((string_to_print, thread_num)));
+                                let string_to_print = format!("{} MB downloaded {}", bytes_out as f64 / 1000000., crate::shorten_string(&path_to_download.to_string_lossy(), 80));
+                                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                             }
                         }
                         Err(e) => {
-                            let string_to_print = format!("{}Read error: {}{}", *RED, e, *RESET);
-                            unwrap!(tx_clone.send((string_to_print, -1)));
+                            let string_to_print = format!("Read error: {}", e);
+                            println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                             continue 'download; // do another request and resume
                         }
                     }
                 }
             }
             Ok(Err(download_error)) => {
-                let string_to_print = format!("{}Download error: {}{}", *RED, download_error, *RESET);
-                unwrap!(tx_clone.send((string_to_print, -1)));
+                let string_to_print = format!("Download error: {}", download_error);
+                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
             }
             Err(request_error) => {
-                let string_to_print = format!("{}Error: {}{}", *RED, request_error, *RESET);
-                unwrap!(tx_clone.send((string_to_print, -1)));
+                let string_to_print = format!("Error: {}", request_error);
+                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
             }
         }
         break 'download;
     }
-    let atime = unwrap!(modified);
-    let mtime = unwrap!(modified);
-    unwrap!(filetime::set_file_times(&temp_local_path, atime, mtime));
-
-    //Some files are read-only. For example .git files.
-    //Check the attribute, remember it and remove the read-only.
-    //let mut is_read_only = false;
-    if path_of_local_path.exists() {
-        let mut perms = unwrap!(fs::metadata(&path_of_local_path)).permissions();
-        if perms.readonly() == true {
-            //is_read_only = true;
-            perms.set_readonly(false);
-            fs::set_permissions(&path_of_local_path, perms).unwrap();
-        }
-    }
+    let atime = modified.expect("Bug: modified date not exist");
+    let mtime = modified.expect("Bug: modified date not exist");
+    filetime::set_file_times(&temp_local_path, atime, mtime)?;
 
     // move-rename the completed download file to his final folder
-    unwrap!(fs::rename(&temp_local_path, &local_path));
-
-    // write to file list_just_downloaded_or_moved.
-    // multi-thread no problem: append is atomic on most OS <https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create>
-    let line_to_append = format!("{}\t{}\t{}", download_path, s_modified, bytes_out);
-    let string_to_print = format!("{}", &line_to_append);
-    unwrap!(tx_clone.send((string_to_print, -1)));
-    let mut just_downloaded = fs::OpenOptions::new().create(true).append(true).open(app_config.path_list_just_downloaded_or_moved).unwrap();
-    unwrap!(writeln!(just_downloaded, "{}", line_to_append));
+    std::fs::rename(&temp_local_path, &local_path)?;
+    Ok(())
 }
+
+/*
+
 
 /// download files from list
 pub fn download_from_list(app_config: &'static AppConfig) {
@@ -537,8 +499,8 @@ pub fn download_from_list(app_config: &'static AppConfig) {
         }
         // delete the temp folder
         let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-        let base_temp_download_path = format!("{}_temp_download", &base_local_path);
-        fs::remove_dir_all(base_temp_download_path).unwrap_or(());
+        let base_temp_path_to_download = format!("{}_temp_download", &base_local_path);
+        fs::remove_dir_all(base_temp_path_to_download).unwrap_or(());
     } else {
         println!("list_for_download: 0");
     }
