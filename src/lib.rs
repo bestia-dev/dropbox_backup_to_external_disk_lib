@@ -63,8 +63,6 @@ pub fn sync_only(app_config: &'static AppConfig) {
     move_or_rename_local_files(app_config);
     println!("{}move to trash from list{}", *YELLOW, *RESET);
     trash_from_list(app_config);
-    println!("{}correct time from list{}", *YELLOW, *RESET);
-    correct_time_from_list(app_config);
     press_enter_to_continue_timeout_5_sec();
     download_from_list(app_config);
 }

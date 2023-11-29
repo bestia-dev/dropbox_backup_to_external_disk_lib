@@ -3,9 +3,10 @@
 use std::path::Path;
 
 use crate::{utils_mod::println_to_ui_thread, FileTxt, LibError};
+use chrono::{DateTime, Utc};
 use uncased::UncasedStr;
 
-/// compare list: the lists and produce list_for_download, list_for_trash, list_for_correct_time
+/// compare list: the lists and produce list_for_download, list_for_trash
 pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<(), LibError> {
     //add_just_downloaded_to_list_local(app_config);
     compare_lists_internal(
@@ -14,7 +15,6 @@ pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'stati
         app_config.path_list_destination_files,
         app_config.path_list_for_download,
         app_config.path_list_for_trash,
-        app_config.path_list_for_correct_time,
     )?;
     Ok(())
 }
@@ -26,7 +26,6 @@ fn compare_lists_internal(
     path_list_destination_files: &Path,
     path_list_for_download: &Path,
     path_list_for_trash: &Path,
-    path_list_for_correct_time: &Path,
 ) -> Result<(), LibError> {
     let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
@@ -40,7 +39,6 @@ fn compare_lists_internal(
 
     let mut vec_for_download: Vec<String> = vec![];
     let mut vec_for_trash: Vec<String> = vec![];
-    let mut vec_for_correct_time: Vec<String> = vec![];
     let mut cursor_source = 0;
     let mut cursor_destination = 0;
     //avoid making new allocations or shadowing inside a loop
@@ -63,6 +61,7 @@ fn compare_lists_internal(
             cursor_source += 1;
         } else {
             //compare the 2 lines
+            // /Video_Backup/DVDs/BikeManual/om/FOXHelp/jap/float_x.htm	2007-01-08T19:31:44Z	45889
             vec_line_source = vec_list_source_files[cursor_source].split("\t").collect();
             vec_line_destination = vec_list_destination_files[cursor_destination].split("\t").collect();
             // UncasedStr preserves the case in the string, but comparison is done case insensitive
@@ -76,11 +75,13 @@ fn compare_lists_internal(
                 vec_for_trash.push(vec_list_destination_files[cursor_destination].to_string());
                 cursor_destination += 1;
             } else {
-                // equal names. check date and size
-                // if equal size and time difference only in seconds, then correct destination time
-                if vec_line_source[2] == vec_line_destination[2] && vec_line_source[1] != vec_line_destination[1] && vec_line_source[1][0..17] == vec_line_destination[1][0..17] {
-                    vec_for_correct_time.push(format!("{}\t{}", path_destination, vec_line_source[1]));
-                } else if vec_line_source[1] != vec_line_destination[1] || vec_line_source[2] != vec_line_destination[2] {
+                // equal names! check date and size
+                // incredible, incredible, incredible. exFAT is a Microsoft disk format for external disks. It allows for 10ms resolution for LastWrite/modified datetime.
+                // But Microsoft in Win10 driver for exFAT uses only 2seconds resolution. Crazy! After 20 years of existence.
+                // this means that if the time difference is less then 2 seconds, they are probably the same file
+                let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1]).expect("Bug: datetime must be correct").into();
+                let destination_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_destination[1]).expect("Bug: datetime must be correct").into();
+                if vec_line_source[2] != vec_line_destination[2] || chrono::Duration::from(source_modified_dt_utc - destination_modified_dt_utc).abs() > chrono::Duration::seconds(2) {
                     vec_for_download.push(vec_list_source_files[cursor_source].to_string());
                 }
                 // else the metadata is the same, no action
@@ -98,11 +99,6 @@ fn compare_lists_internal(
     println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash.file_name(), vec_for_trash.len()));
     let string_for_trash = vec_for_trash.join("\n");
     file_list_for_trash.write_str(&string_for_trash)?;
-
-    let mut file_list_for_correct_time = FileTxt::open_for_read_and_write(path_list_for_correct_time)?;
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_correct_time.file_name(), vec_for_correct_time.len()));
-    let string_for_correct_time = vec_for_correct_time.join("\n");
-    file_list_for_correct_time.write_str(&string_for_correct_time)?;
 
     Ok(())
 }

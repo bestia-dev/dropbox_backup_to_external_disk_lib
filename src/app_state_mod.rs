@@ -14,7 +14,6 @@ pub struct AppConfig {
     pub path_list_destination_readonly_files: &'static Path,
     pub path_list_for_download: &'static Path,
     pub path_list_for_trash: &'static Path,
-    pub path_list_for_correct_time: &'static Path,
     pub path_list_just_downloaded_or_moved: &'static Path,
     pub path_list_for_trash_folders: &'static Path,
     pub path_list_for_create_folders: &'static Path,

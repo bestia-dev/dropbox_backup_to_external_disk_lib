@@ -35,6 +35,9 @@ pub enum LibError {
     #[error("InquireError: {0}")]
     InquireError(#[from] inquire::InquireError),
 
+    #[error("TimestampError: {0}")]
+    TimestampError(#[from] humantime::TimestampError),
+
     #[error("ErrorFromString: {0}")]
     ErrorFromString(String),
     #[error("ErrorFromStaticStr: {0}")]

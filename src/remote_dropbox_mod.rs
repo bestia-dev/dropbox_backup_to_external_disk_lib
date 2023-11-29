@@ -73,27 +73,28 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
 
     // channel for inter-thread communication to send folder/files lists
     let (list_tx, list_rx) = mpsc::channel();
-
+    let list_tx_move_to_closure = list_tx.clone();
     // walkdir non-recursive for the first level of folders
-    let ui_tx_clone_1 = ui_tx.clone();
-    let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx_clone_1)?;
+    let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx.clone())?;
 
     let mut folder_list_all = vec![];
     let mut file_list_all = file_list_root;
-    let ui_tx_clone_2 = ui_tx.clone();
+    let ui_tx_move_to_closure = ui_tx.clone();
 
     // these folders will request walkdir recursive in parallel
     // loop in a new thread, so the send msg will come immediately
     let _sender_thread = std::thread::spawn(move || {
+        let ui_tx_2 = ui_tx_move_to_closure.clone();
+        let list_tx_2 = list_tx_move_to_closure.clone();
         // threadpool with 3 threads
         let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("Bug: rayon ThreadPoolBuilder");
         pool.scope(|scoped| {
             for folder_path in &folder_list_root {
                 // these variables will be moved/captured into the closure
                 let folder_path = folder_path.clone();
-                let ui_tx_clone_3 = ui_tx_clone_2.clone();
                 let token_clone2 = token.to_owned().clone();
-                let list_tx_clone_1 = list_tx.clone();
+                let ui_tx_3 = ui_tx_2.clone();
+                let list_tx_3 = list_tx_2.clone();
                 // execute in a separate threads, or waits for a free thread from the pool
                 // scoped.spawn closure cannot return a Result<>, but it can send it as inter-thread message
                 scoped.spawn(move |_s| {
@@ -101,18 +102,15 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
                     // recursive walkdir
                     let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
 
-                    list_tx_clone_1
-                        .send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_clone_3))
-                        .expect("Bug: mpsc send");
+                    list_tx_3.send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_3)).expect("Bug: mpsc send");
                     // TODO: this send raises error? Why? The receiver should be alive for long.
                 });
             }
         });
-        // all clones of tx must be dropped to finish the receiver iterator
-        drop(list_tx);
     });
 
     // the receiver reads all msgs from the queue
+    drop(list_tx);
     let mut all_folder_count = 0;
     let mut all_file_count = 0;
     for msg in &list_rx {
@@ -132,7 +130,6 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
     let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
     file_list_source_folders.write_str(&string_folder_list)?;
 
-    drop(ui_tx);
     Ok(())
 }
 

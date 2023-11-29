@@ -5,7 +5,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **One way sync from dropbox to external disc**  
-***version: 2.1.43 date: 2023-11-28 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
+***version: 2.1.48 date: 2023-11-29 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
 
 [//]: # (auto_cargo_toml_to_md end)
 
@@ -13,9 +13,9 @@
 ![status](https://img.shields.io/badge/work_in_progress-yellow) 
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1446-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-95-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-188-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1410-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-93-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-187-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
@@ -62,13 +62,11 @@ For big dropbox remotes it can take a while to complete. After the first level f
 TODO: If possible copy the local file that is synced with Dropbox instead of download.  
 The sorting of lists is also done in parallel with the crate Rayon.  
 Once the lists are complete the CLI will compare them and create files:  
-`list_for_correct_time.csv`  
 `list_for_download.csv`  
 `list_for_trash.csv`  
 With this files the CLI will:  
 `move_or_rename_local_files` if (name, size and file date) are equal, or (size, date and content_hash)
 `trash_from_list` will move the obsolete files into a trash folder  
-`correct_time_from_list` sometimes it is needed  
 `download_from_list` - this can take a lot of time and it can be stopped with ctrl+c
 
 ## DropBox api2 - Stone sdk

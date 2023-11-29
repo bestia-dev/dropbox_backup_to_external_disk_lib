@@ -31,14 +31,11 @@ pub fn list_local(
     mut file_list_destination_files: FileTxt,
     mut file_list_destination_folders: FileTxt,
     mut file_list_destination_readonly_files: FileTxt,
-    mut file_list_just_downloaded_or_moved: FileTxt,
 ) -> Result<(), LibError> {
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
     file_list_destination_files.empty()?;
     file_list_destination_folders.empty()?;
     file_list_destination_readonly_files.empty()?;
-    // just_loaded is obsolete once I got the fresh local list
-    file_list_just_downloaded_or_moved.empty()?;
 
     // write data to a big string in memory (for my use-case it is >25 MB)
     let mut files_string = String::with_capacity(40_000_000);
@@ -103,7 +100,7 @@ pub fn list_local(
 
 /// The backup files must not be readonly to allow copying the modified file from the remote.
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
-pub fn read_only_remove(file_destination_readonly_files: &mut FileTxt, base_path: &Path, ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
+pub fn read_only_remove(ui_tx: std::sync::mpsc::Sender<String>, base_path: &Path, file_destination_readonly_files: &mut FileTxt) -> Result<(), LibError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
     let mut warning_shown_already = false;
     let mut there_is_a_readonly_files = false;
@@ -152,7 +149,7 @@ You have to do it manually in PowerShell.";
 }
 
 /// create new empty folders
-pub fn create_folders(file_list_for_create_folders: &mut FileTxt, base_path: &Path, ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
+pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, base_path: &Path, file_list_for_create_folders: &mut FileTxt) -> Result<(), LibError> {
     let list_for_create_folders = file_list_for_create_folders.read_to_string()?;
     if list_for_create_folders.is_empty() {
         println_to_ui_thread(&ui_tx, format!("list_for_create_folders is empty"));
@@ -176,13 +173,13 @@ pub fn create_folders(file_list_for_create_folders: &mut FileTxt, base_path: &Pa
 /// If found, get the remote_metadata with content_hash and calculate local_content_hash.
 /// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.
 /// Remove also the lines in files list_for_trash and list_for_download.
-pub fn move_or_rename_local_files(ext_disk_base_path: &Path, file_list_for_trash: &mut FileTxt, file_list_for_download: &mut FileTxt, ui_tx: std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
+pub fn move_or_rename_local_files(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash: &mut FileTxt, file_list_for_download: &mut FileTxt) -> Result<(), LibError> {
     let list_for_trash = file_list_for_trash.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_trash: Vec<&str> = list_for_trash.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_name(ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download, ui_tx.clone()) {
+    match move_or_rename_local_files_internal_by_name(ui_tx.clone(), ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk and continue
             file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
@@ -201,7 +198,7 @@ pub fn move_or_rename_local_files(ext_disk_base_path: &Path, file_list_for_trash
     let mut vec_list_for_trash: Vec<&str> = list_for_trash.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_hash(ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download, ui_tx) {
+    match move_or_rename_local_files_internal_by_hash(ui_tx, ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk
             file_list_for_trash.write_str(&vec_list_for_trash.join("\n"))?;
@@ -219,10 +216,10 @@ pub fn move_or_rename_local_files(ext_disk_base_path: &Path, file_list_for_trash
 
 // internal because of catching errors
 fn move_or_rename_local_files_internal_by_name(
+    ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &Path,
     vec_list_for_trash: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-    ui_tx: std::sync::mpsc::Sender<String>,
 ) -> Result<(), LibError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
@@ -269,7 +266,7 @@ fn move_or_rename_local_files_internal_by_name(
                 let path_global_to_download = ext_disk_base_path.join(string_path_for_download.trim_start_matches("/"));
 
                 if modified_for_trash == modified_for_download && size_for_trash == size_for_download && file_name_for_trash == file_name_for_download {
-                    move_internal(&path_global_to_trash, &path_global_to_download, &ui_tx)?;
+                    move_internal(&ui_tx, &path_global_to_trash, &path_global_to_download)?;
                     // remove the lines from the original mut Vec
                     vec_list_for_trash.retain(|line| line != line_for_trash);
                     vec_list_for_download.retain(|line| line != line_for_download);
@@ -287,10 +284,10 @@ fn move_or_rename_local_files_internal_by_name(
 
 // internal because of catching errors
 fn move_or_rename_local_files_internal_by_hash(
+    ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &Path,
     vec_list_for_trash: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-    ui_tx: std::sync::mpsc::Sender<String>,
 ) -> Result<(), LibError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
@@ -328,7 +325,7 @@ fn move_or_rename_local_files_internal_by_hash(
                     let remote_content_hash = get_content_hash(string_path_for_download)?;
 
                     if local_content_hash == remote_content_hash {
-                        move_internal(&path_global_to_trash, &path_global_to_download, &ui_tx)?;
+                        move_internal(&ui_tx, &path_global_to_trash, &path_global_to_download)?;
                         // remove the lines from the original mut Vec
                         vec_list_for_trash.retain(|line| line != line_for_trash);
                         vec_list_for_download.retain(|line| line != line_for_download);
@@ -345,7 +342,7 @@ fn move_or_rename_local_files_internal_by_hash(
 }
 
 /// internal code to move file
-fn move_internal(path_global_to_trash: &Path, path_global_for_download: &Path, ui_tx: &std::sync::mpsc::Sender<String>) -> Result<(), LibError> {
+fn move_internal(ui_tx: &std::sync::mpsc::Sender<String>, path_global_to_trash: &Path, path_global_for_download: &Path) -> Result<(), LibError> {
     let move_from = path_global_to_trash;
     let move_to = path_global_for_download;
     println_to_ui_thread(&ui_tx, format!("move {}  ->  {}", &move_from.to_string_lossy(), &move_to.to_string_lossy()));
@@ -379,8 +376,6 @@ fn get_content_hash(path_for_download: &str) -> Result<String, LibError> {
 }
 
 /*
-
-
 
 /// Move to trash folder the files from list_for_trash.
 /// Ignore if the file does not exist anymore.
@@ -440,37 +435,6 @@ pub fn trash_from_list_internal(base_local_path: &str, path_list_for_trash: &str
     }
 }
 
-/// modify the date od files from list_for_correct_time
-pub fn correct_time_from_list(app_config: &'static AppConfig) {
-    /*     let token = crate::remote_dropbox_mod::get_short_lived_access_token();
-    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token); */
-    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-    correct_time_from_list_internal(&base_local_path, app_config.path_list_for_correct_time);
-}
-
-/// modify the date od files from list_for_correct_time
-fn correct_time_from_list_internal(base_local_path: &str, path_list_for_correct_time: &str) {
-    let mut file_list_for_correct_time = FileTxt::open_for_read_and_write(path_list_for_correct_time).unwrap();
-    let list_for_correct_time = file_list_for_correct_time.read_to_string().unwrap();
-    for path_to_correct_time in list_for_correct_time.lines() {
-        let line: Vec<&str> = path_to_correct_time.split("\t").collect();
-        let remote_path = line[0];
-        let local_path = format!("{}{}", base_local_path, remote_path);
-        if path::Path::new(&local_path).exists() {
-            let remote_content_hash = get_content_hash(remote_path);
-            let local_content_hash = format!("{:x}", unwrap!(DropboxContentHasher::hash_file(&local_path)));
-            if local_content_hash == remote_content_hash {
-                let modified = filetime::FileTime::from_system_time(unwrap!(humantime::parse_rfc3339(line[1])));
-                unwrap!(filetime::set_file_mtime(local_path, modified));
-                // TODO: correct also in list_destination_files.csv, so I can make a new compare after this action
-            } else {
-                error!("correct_time content_hash different: {}", remote_path);
-            }
-        }
-    }
-    // empty the list
-    file_list_for_correct_time.empty().unwrap();
-}
 
 
 
