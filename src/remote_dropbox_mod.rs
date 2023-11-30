@@ -53,13 +53,7 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, L
 #[allow(unused_imports)]
 use std::collections::VecDeque;
 use std::path::Path;
-/* use std::env;
-use std::io::{self, Read, Write};
-use std::path; */
 use std::sync::mpsc;
-/* use std::thread;
-use uncased::UncasedStr;
-use unwrap::unwrap; */
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
@@ -305,24 +299,19 @@ fn download_internal(
     let mut bytes_out = 0u64;
     let thread_name = format!("R{thread_num}");
     let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
-    dbg!(&download_arg.path);
+
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
     // create folder if it does not exist
     let parent = local_path.parent().expect("Bug: Parent must exist.");
     if !parent.exists() {
         std::fs::create_dir_all(parent)?;
     }
-    let base_temp_path_to_download = Path::new("temp_data");
+    let base_temp_path_to_download = Path::new("temp_data/temp_download");
     if !base_temp_path_to_download.exists() {
         std::fs::create_dir_all(&base_temp_path_to_download)?;
     }
-    let temp_local_path = base_temp_path_to_download.join(path_to_download.to_string_lossy().trim_start_matches("/"));
-    dbg!(&temp_local_path);
-    // create temp folder if it does not exist
-    let temp_parent = temp_local_path.parent().expect("Bug: Parent must exist.");
-    if !temp_parent.exists() {
-        std::fs::create_dir_all(temp_parent)?;
-    }
+    let file_name = path_to_download.file_name().expect("Bug: Filename must exist.");
+    let temp_local_path = base_temp_path_to_download.join(file_name);
 
     let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
 
@@ -385,129 +374,84 @@ fn download_internal(
     let mtime = modified.expect("Bug: modified date not exist");
     filetime::set_file_times(&temp_local_path, atime, mtime)?;
 
-    // move-rename the completed download file to his final folder
-    std::fs::rename(&temp_local_path, &local_path)?;
+    // move the completed download file to his final folder
+    // the classic std::fs::rename returns IoError: Invalid cross-device link (os error 18), because it cannot
+    // move files from container to mounts in other operating systems.
+    // I have to do copy with code and then delete.
+    {
+        let mut reader = std::fs::File::open(&temp_local_path)?;
+        let mut writer = std::fs::File::create(local_path)?;
+        std::io::copy(&mut reader, &mut writer)?;
+    }
+    std::fs::remove_file(&temp_local_path)?;
     Ok(())
 }
 
-/*
-
-
 /// download files from list
-pub fn download_from_list(app_config: &'static AppConfig) {
-    let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-    let list_for_download = fs::read_to_string(app_config.path_list_for_download).unwrap();
+pub fn download_from_list(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, file_list_for_download: &mut FileTxt) -> Result<(), LibError> {
+    let list_for_download = file_list_for_download.read_to_string()?;
+    let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
     if !list_for_download.is_empty() {
-        let mut hide_cursor_terminal = crate::start_hide_cursor_terminal();
-        let (x_screen_len, _y_screen_len) = unwrap!(termion::terminal_size());
-        let (_x, y) = get_pos(&mut hide_cursor_terminal);
-
-        println!("{}{}download_from_list{}", at_line(1), *YELLOW, *RESET);
-        print!("{}", at_line(y));
-
-        let token = get_short_lived_access_token();
-        let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-        // channel for inter-thread communication.
-        let (tx, rx) = mpsc::channel();
-
-        // loop in a new thread, so the send msg will come immediately
-        let _sender_thread = thread::spawn(move || {
-            let base_local_path_ref = &base_local_path;
-            let client_ref = &client;
-            // 3 threads to download in parallel
-            let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
-            pool.scope(|scoped| {
-                for line_path_to_download in list_for_download.lines() {
-                    let line: Vec<&str> = line_path_to_download.split("\t").collect();
-                    let path_to_download = line[0];
-                    let modified_for_download = line[1];
-                    let file_size: i32 = line[2].parse().unwrap();
-                    if file_size == 0 {
-                        // create an empty file, because download empty file causes error 416
-                        let local_path = format!("{}{}", base_local_path, path_to_download);
-                        let path = path::PathBuf::from(&local_path);
-                        let parent = path.parent().unwrap();
-                        if !path::Path::new(&parent).exists() {
-                            fs::create_dir_all(parent).unwrap();
-                        }
-                        let mut file = FileTxt::open_for_read_and_write(&local_path).unwrap();
-                        file.empty().unwrap();
-
-                        // change the file date
-                        let system_time = unwrap!(humantime::parse_rfc3339(modified_for_download));
-                        let modified = filetime::FileTime::from_system_time(system_time);
-                        let atime = modified;
-                        let mtime = modified;
-                        unwrap!(filetime::set_file_times(&local_path, atime, mtime));
-
-                        unwrap!(tx.send((format!("{}", &local_path), -1)));
-
-                        // append to list_just_downloaded
-                        let mut just_downloaded = fs::OpenOptions::new().create(true).append(true).open(app_config.path_list_just_downloaded_or_moved).unwrap();
-                        unwrap!(writeln!(just_downloaded, "{}", line_path_to_download));
-                    } else {
-                        let tx_clone2 = mpsc::Sender::clone(&tx);
-                        // execute in a separate threads, or waits for a free thread from the pool
-                        scoped.spawn(move |_s| {
-                            let thread_num = unwrap!(rayon::current_thread_index()) as i32;
-                            download_internal(path_to_download, client_ref, base_local_path_ref, thread_num, tx_clone2, x_screen_len, app_config);
-                        });
-                    }
-                }
-                drop(tx);
-            });
-        });
-        // the receiver reads all msgs from the queue, until senders exist - drop(tx)
-        // only this thread writes to the terminal, to avoid race in cursor position
-
-        let mut string_to_print_1 = "".to_string();
-        let mut string_to_print_2 = "".to_string();
-        let mut string_to_print_3 = "".to_string();
-        for msg in &rx {
-            let (string_to_print, thread_num) = msg;
-            if thread_num != -1 {
-                let (_x, y) = get_pos(&mut hide_cursor_terminal);
-                println!("{}{}", at_line(3 + thread_num as u16), &string_to_print);
-                print!("{}", at_line(y),);
-                if thread_num == 0 {
-                    string_to_print_1 = string_to_print;
-                } else if thread_num == 1 {
-                    string_to_print_2 = string_to_print;
-                } else if thread_num == 2 {
-                    string_to_print_3 = string_to_print;
-                }
-            } else {
-                let (_x, y) = get_pos(&mut hide_cursor_terminal);
-                // there is annoying jumping because of scrolling
-                // let clear first and write second
-                println!("{}{}", at_line(7), termion::clear::BeforeCursor);
-                print!("{}", at_line(y));
-
-                println!("{}", &string_to_print);
-
-                let (_x, y) = get_pos(&mut hide_cursor_terminal);
-                // print the first 6 lines, because of scrolling
-                println!("{}{}download_from_list{}", at_line(1), *YELLOW, *RESET);
-                println!("{}", *CLEAR_LINE);
-                println!("{}", &string_to_print_1);
-                println!("{}", &string_to_print_2);
-                println!("{}", &string_to_print_3);
-                println!("{}", *CLEAR_LINE);
-                print!("{}", at_line(y));
+        match download_from_list_internal(ui_tx, ext_disk_base_path, &mut vec_list_for_download) {
+            Ok(()) => {
+                // in case all is ok, write actual situation to disk and continue
+                file_list_for_download.empty()?;
+                file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
+            }
+            Err(err) => {
+                // also in case of error, write the actual situation to disk and return error
+                file_list_for_download.empty()?;
+                file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
+                return Err(err);
             }
         }
-        // delete the temp folder
-        let base_local_path = fs::read_to_string(app_config.path_list_ext_disk_base_path).unwrap();
-        let base_temp_path_to_download = format!("{}_temp_download", &base_local_path);
-        fs::remove_dir_all(base_temp_path_to_download).unwrap_or(());
-    } else {
-        println!("list_for_download: 0");
     }
-    println!("{}compare remote and local lists{}", *YELLOW, *RESET);
-    compare_files(app_config);
+    Ok(())
 }
 
+fn download_from_list_internal(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, vec_list_for_download: &mut Vec<&str>) -> Result<(), LibError> {
+    let token = get_authorization_token()?;
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
+    let client_ref = &client;
+    // 3 threads to download in parallel
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
+    pool.scope(|scoped| {
+        let vec_list_for_download_clone = vec_list_for_download.clone();
+        for line_path_to_download in vec_list_for_download_clone.iter() {
+            let line: Vec<&str> = line_path_to_download.split("\t").collect();
+            let path_to_download = line[0];
+            let modified_for_download = line[1];
+            let file_size: i32 = line[2].parse().expect("Bug: size must be in list_for_download");
+            let thread_name = format!("R{}", rayon::current_thread_index().expect("Bug: thread num must exist."));
+            if file_size == 0 {
+                // create an empty file, because download empty file causes error 416
+                let local_path = ext_disk_base_path.join(path_to_download.trim_start_matches("/"));
+                let parent = local_path.parent().expect("Bug: parent must exist");
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent).unwrap();
+                }
+                if local_path.exists() {
+                    std::fs::remove_file(&local_path).expect("Bug: remove file must succeed");
+                }
+                let _file = FileTxt::open_for_read_and_write(&local_path).expect("Bug: open_for_read_and_write must succeed.");
+                // change the file date
+                let system_time = humantime::parse_rfc3339(modified_for_download).expect("Bug: parse_rfc3339 must succeed");
+                let modified = filetime::FileTime::from_system_time(system_time);
+                let atime = modified;
+                let mtime = modified;
+                filetime::set_file_times(&local_path, atime, mtime).expect("Bug: set_file_times must succeed.");
+                println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string_lossy().to_string(), &thread_name);
+            } else {
+                let ui_tx_clone = ui_tx.clone();
+                // execute in 3 separate threads, or waits for a free thread from the pool
+                scoped.spawn(|_s| {
+                    let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+                    download_internal(Path::new(path_to_download), client_ref, ext_disk_base_path, thread_num as i32, ui_tx_clone).expect("Bug: download_internal must succeed");
+                });
+            }
+        }
+    });
 
-
- */
+    Ok(())
+}
