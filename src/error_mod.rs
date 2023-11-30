@@ -32,6 +32,9 @@ pub enum LibError {
     #[error("ListFolderError: {0}")]
     ListFolderError(#[from] dropbox_sdk::files::ListFolderError),
 
+    #[error("GetMetadataError: {0}")]
+    GetMetadataError(#[from] dropbox_sdk::files::GetMetadataError),
+
     #[error("InquireError: {0}")]
     InquireError(#[from] inquire::InquireError),
 

@@ -98,7 +98,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
                     let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
 
                     list_tx_3.send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_3)).expect("Bug: mpsc send");
-                    // TODO: this send raises error? Why? The receiver should be alive for long.
+                    // TODO: this send raises error? Why? The receiver should be alive for all the duration until all clones are alive.
                 });
             }
         });
@@ -280,120 +280,207 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
 }
 
 /// download one file
-pub fn download_one_file(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, path_to_download: &Path) -> Result<(), LibError> {
+pub fn download_one_file(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    path_to_download: &Path,
+    file_powershell_script_change_modified_datetime: &mut FileTxt,
+) -> Result<(), LibError> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    let thread_num = 0;
-    download_internal(path_to_download, &client, ext_disk_base_path, thread_num, ui_tx)?;
+    let client_ref = &client;
+    let mut run_manually_powershell_script = false;
+    // channel for inter-thread communication to send powershell script
+    let (powershell_tx, powershell_rx) = mpsc::channel();
+    let powershell_tx_move_to_closure = powershell_tx.clone();
+    // It will download only one file, but I want it to be compatible with the download_from_list
+    // that is why rayon and new thread
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
+    pool.scope(|scoped| {
+        let ui_tx_clone = ui_tx.clone();
+        // execute in 3 separate threads, or waits for a free thread from the pool
+        scoped.spawn(|_s| {
+            let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+            download_internal(
+                ui_tx_clone,
+                ext_disk_base_path,
+                client_ref,
+                thread_num as i32,
+                Path::new(path_to_download),
+                powershell_tx_move_to_closure,
+            )
+            .expect("Bug: download_internal must succeed");
+        });
+    });
+
+    // the receiver reads all msgs from the queue
+    drop(powershell_tx);
+    for msg in &powershell_rx {
+        file_powershell_script_change_modified_datetime.write_append_str(&format!("{msg}\n"))?;
+        run_manually_powershell_script = true;
+    }
+
+    if run_manually_powershell_script {
+        println_to_ui_thread_with_thread_name(
+            &ui_tx,
+            format!(
+                r#"The files are downloaded, but this program cannot change the modified datetime of the files
+because it is not possible from WSL Debian for files on an external disk with exFAT. I don't know why.
+The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps"#
+            ),
+            "",
+        );
+    }
+
     Ok(())
 }
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
-    path_to_download: &Path,
-    client: &dropbox_sdk::default_client::UserAuthDefaultClient,
-    ext_disk_base_path: &Path,
-    thread_num: i32,
     ui_tx: mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    client: &dropbox_sdk::default_client::UserAuthDefaultClient,
+    thread_num: i32,
+    path_to_download: &Path,
+    powershell_tx: mpsc::Sender<String>,
 ) -> Result<(), LibError> {
-    let mut bytes_out = 0u64;
     let thread_name = format!("R{thread_num}");
-    let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
-
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
     // create folder if it does not exist
     let parent = local_path.parent().expect("Bug: Parent must exist.");
     if !parent.exists() {
         std::fs::create_dir_all(parent)?;
     }
-    let base_temp_path_to_download = Path::new("temp_data/temp_download");
-    if !base_temp_path_to_download.exists() {
-        std::fs::create_dir_all(&base_temp_path_to_download)?;
-    }
     let file_name = path_to_download.file_name().expect("Bug: Filename must exist.");
-    let temp_local_path = base_temp_path_to_download.join(file_name);
 
-    let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
+    let modified_str;
+    let metadata_size;
+    // get datetime from remote
+    let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string_lossy().to_string());
+    let metadata = (dropbox_sdk::files::get_metadata(client, &get_metadata_arg)?)?;
+    match metadata {
+        dropbox_sdk::files::Metadata::File(metadata) => {
+            modified_str = metadata.client_modified;
+            metadata_size = metadata.size;
+        }
+        _ => {
+            return Err(LibError::ErrorFromStr("This is not a file on Dropbox"));
+        }
+    }
+    let system_time = humantime::parse_rfc3339(&modified_str).expect("Bug: parse_rfc3339 must succeed");
+    let modified = filetime::FileTime::from_system_time(system_time);
 
-    let mut modified: Option<filetime::FileTime> = None;
-    let mut s_modified;
-    // I will download to a temp folder and then move the file to the right folder only when the download is complete.
-    'download: loop {
-        let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
-        match result {
-            Ok(Ok(download_result)) => {
-                let mut body = download_result.body.expect("Bug: body must exist");
-                if modified.is_none() {
-                    s_modified = download_result.result.client_modified.clone();
-                    modified = Some(filetime::FileTime::from_system_time(humantime::parse_rfc3339(&s_modified)?));
-                };
-                loop {
-                    // limit read to 1 MiB per loop iteration so we can output progress
-                    // let mut input_chunk = (&mut body).take(1_048_576);
-                    use std::io::Read;
-                    let mut input_chunk = (&mut body).take(1_048_576);
-                    match std::io::copy(&mut input_chunk, &mut file) {
-                        Ok(0) => {
-                            break 'download;
-                        }
-                        Ok(len) => {
-                            bytes_out += len as u64;
-                            if let Some(total) = download_result.content_length {
-                                let string_to_print = format!(
-                                    "{:.01}% of {:.02} MB downloading {}",
-                                    bytes_out as f64 / total as f64 * 100.,
-                                    total as f64 / 1000000.,
-                                    crate::shorten_string(&path_to_download.to_string_lossy(), 80)
-                                );
-                                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
-                            } else {
-                                let string_to_print = format!("{} MB downloaded {}", bytes_out as f64 / 1000000., crate::shorten_string(&path_to_download.to_string_lossy(), 80));
-                                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+    // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
+    if metadata_size == 0 {
+        if local_path.exists() {
+            std::fs::remove_file(&local_path).expect("Bug: remove file must succeed");
+        }
+        let _file = FileTxt::open_for_read_and_write(&local_path).expect("Bug: open_for_read_and_write must succeed.");
+        println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string_lossy().to_string(), &thread_name);
+    } else {
+        let mut bytes_out = 0u64;
+        let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
+        let base_temp_path_to_download = Path::new("temp_data/temp_download");
+        if !base_temp_path_to_download.exists() {
+            std::fs::create_dir_all(&base_temp_path_to_download)?;
+        }
+        let temp_local_path = base_temp_path_to_download.join(file_name);
+        let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
+        // I will download to a temp folder and then move the file to the right folder only when the download is complete.
+        'download: loop {
+            // TODO: I want to press a key to stop the downloading gracefully
+            // but this thread is NOT the ui thread                                
+            let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
+            match result {
+                Ok(Ok(download_result)) => {
+                    let mut body = download_result.body.expect("Bug: body must exist");
+                    loop {
+                        // limit read to 1 MiB per loop iteration so we can output progress
+                        // let mut input_chunk = (&mut body).take(1_048_576);
+                        use std::io::Read;
+                        let mut input_chunk = (&mut body).take(1_048_576);
+                        match std::io::copy(&mut input_chunk, &mut file) {
+                            Ok(0) => {
+                                break 'download;
                             }
-                        }
-                        Err(e) => {
-                            let string_to_print = format!("Read error: {}", e);
-                            println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
-                            continue 'download; // do another request and resume
+                            Ok(len) => {
+                                bytes_out += len as u64;
+                                if let Some(total) = download_result.content_length {
+                                    let string_to_print = format!(
+                                        "{:.01}% of {:.02} MB downloading {}",
+                                        bytes_out as f64 / total as f64 * 100.,
+                                        total as f64 / 1000000.,
+                                        crate::shorten_string(&path_to_download.to_string_lossy(), 80)
+                                    );
+                                    println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                                } else {
+                                    let string_to_print = format!("{} MB downloaded {}", bytes_out as f64 / 1000000., crate::shorten_string(&path_to_download.to_string_lossy(), 80));
+                                    println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                                }
+                            }
+                            Err(e) => {
+                                let string_to_print = format!("Read error: {}", e);
+                                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                                continue 'download; // do another request and resume
+                            }
                         }
                     }
                 }
+                Ok(Err(download_error)) => {
+                    let string_to_print = format!("Download error: {}", download_error);
+                    println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                }
+                Err(request_error) => {
+                    let string_to_print = format!("Error: {}", request_error);
+                    println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                }
             }
-            Ok(Err(download_error)) => {
-                let string_to_print = format!("Download error: {}", download_error);
-                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
-            }
-            Err(request_error) => {
-                let string_to_print = format!("Error: {}", request_error);
-                println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+            break 'download;
+        }
+        // move the completed download file to his final folder
+        // the classic std::fs::rename returns IoError: Invalid cross-device link (os error 18), because it cannot
+        // move files from container to mounts in other operating systems.
+        // I have to use std::io::copy with code and then delete.
+        {
+            let mut reader = std::fs::File::open(&temp_local_path)?;
+            let mut writer = std::fs::File::create(&local_path)?;
+            std::io::copy(&mut reader, &mut writer)?;
+            std::fs::remove_file(&temp_local_path)?;
+        }
+    }
+    // cannot change the LastWrite/modified time from the container in WSL to external exFAT on Windows
+    // I will instead write a Powershell script to run manually after the program.
+    // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
+    match filetime::set_file_times(&local_path, modified, modified) {
+        Ok(()) => (),
+        Err(_) => {
+            if local_path.to_string_lossy().starts_with("/mnt/") {
+                let win_path = local_path.to_string_lossy().trim_start_matches("/mnt/").to_string();
+                // replace only the first / with :/
+                let win_path = win_path.replacen("/", ":/", 1);
+                // replace all / with \
+                let win_path = win_path.replace("/", r#"\"#);
+                let ps_command = format!(r#"Set-ItemProperty -Path "{win_path}" -Name LastWriteTime -Value {}"#, modified_str);
+                powershell_tx.send(ps_command).expect("Bug: mpsc send");
             }
         }
-        break 'download;
     }
-    let atime = modified.expect("Bug: modified date not exist");
-    let mtime = modified.expect("Bug: modified date not exist");
-    filetime::set_file_times(&temp_local_path, atime, mtime)?;
 
-    // move the completed download file to his final folder
-    // the classic std::fs::rename returns IoError: Invalid cross-device link (os error 18), because it cannot
-    // move files from container to mounts in other operating systems.
-    // I have to do copy with code and then delete.
-    {
-        let mut reader = std::fs::File::open(&temp_local_path)?;
-        let mut writer = std::fs::File::create(local_path)?;
-        std::io::copy(&mut reader, &mut writer)?;
-    }
-    std::fs::remove_file(&temp_local_path)?;
     Ok(())
 }
 
 /// download files from list
-pub fn download_from_list(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, file_list_for_download: &mut FileTxt) -> Result<(), LibError> {
+pub fn download_from_list(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    file_list_for_download: &mut FileTxt,
+    file_powershell_script_change_modified_datetime: &mut FileTxt,
+) -> Result<(), LibError> {
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
-
+// TODO: delete all files in the temp_download
     if !list_for_download.is_empty() {
-        match download_from_list_internal(ui_tx, ext_disk_base_path, &mut vec_list_for_download) {
+        match download_from_list_internal(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_powershell_script_change_modified_datetime) {
             Ok(()) => {
                 // in case all is ok, write actual situation to disk and continue
                 file_list_for_download.empty()?;
@@ -410,48 +497,54 @@ pub fn download_from_list(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, 
     Ok(())
 }
 
-fn download_from_list_internal(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, ext_disk_base_path: &Path, vec_list_for_download: &mut Vec<&str>) -> Result<(), LibError> {
+fn download_from_list_internal(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    vec_list_for_download: &mut Vec<&str>,
+    file_powershell_script_change_modified_datetime: &mut FileTxt,
+) -> Result<(), LibError> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     let client_ref = &client;
+    let mut run_manually_powershell_script = false;
+    // channel for inter-thread communication to send powershell script
+    let (powershell_tx, powershell_rx) = mpsc::channel();
+    let powershell_tx_move_to_closure = powershell_tx.clone();
     // 3 threads to download in parallel
     let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
-    pool.scope(|scoped| {
+    pool.scope(move |scoped| {
         let vec_list_for_download_clone = vec_list_for_download.clone();
         for line_path_to_download in vec_list_for_download_clone.iter() {
             let line: Vec<&str> = line_path_to_download.split("\t").collect();
             let path_to_download = line[0];
-            let modified_for_download = line[1];
-            let file_size: i32 = line[2].parse().expect("Bug: size must be in list_for_download");
-            let thread_name = format!("R{}", rayon::current_thread_index().expect("Bug: thread num must exist."));
-            if file_size == 0 {
-                // create an empty file, because download empty file causes error 416
-                let local_path = ext_disk_base_path.join(path_to_download.trim_start_matches("/"));
-                let parent = local_path.parent().expect("Bug: parent must exist");
-                if !parent.exists() {
-                    std::fs::create_dir_all(parent).unwrap();
-                }
-                if local_path.exists() {
-                    std::fs::remove_file(&local_path).expect("Bug: remove file must succeed");
-                }
-                let _file = FileTxt::open_for_read_and_write(&local_path).expect("Bug: open_for_read_and_write must succeed.");
-                // change the file date
-                let system_time = humantime::parse_rfc3339(modified_for_download).expect("Bug: parse_rfc3339 must succeed");
-                let modified = filetime::FileTime::from_system_time(system_time);
-                let atime = modified;
-                let mtime = modified;
-                filetime::set_file_times(&local_path, atime, mtime).expect("Bug: set_file_times must succeed.");
-                println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string_lossy().to_string(), &thread_name);
-            } else {
-                let ui_tx_clone = ui_tx.clone();
-                // execute in 3 separate threads, or waits for a free thread from the pool
-                scoped.spawn(|_s| {
-                    let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
-                    download_internal(Path::new(path_to_download), client_ref, ext_disk_base_path, thread_num as i32, ui_tx_clone).expect("Bug: download_internal must succeed");
-                });
-            }
+            let ui_tx_clone = ui_tx.clone();
+            let powershell_tx_2 = powershell_tx_move_to_closure.clone();
+            // execute in 3 separate threads, or waits for a free thread from the pool
+            scoped.spawn(move |_s| {
+                let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+                download_internal(ui_tx_clone, ext_disk_base_path, client_ref, thread_num as i32, Path::new(path_to_download), powershell_tx_2).expect("Bug: download_internal must succeed");
+            });
+        }
+        // the receiver reads all msgs from the queue
+        drop(powershell_tx);
+        for msg in &powershell_rx {
+            file_powershell_script_change_modified_datetime
+                .write_append_str(&format!("{msg}\n"))
+                .expect("Bug: ps script must be writable.");
+            run_manually_powershell_script = true;
+        }
+
+        if run_manually_powershell_script {
+            println_to_ui_thread_with_thread_name(
+                &ui_tx,
+                format!(
+                    r#"The files are downloaded, but this program cannot change the modified datetime of the files
+because it is not possible from WSL Debian for files on an external disk with exFAT. I don't know why.
+The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps"#
+                ),
+                "",
+            );
         }
     });
-
     Ok(())
 }

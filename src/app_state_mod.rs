@@ -17,6 +17,8 @@ pub struct AppConfig {
     pub path_list_just_downloaded_or_moved: &'static Path,
     pub path_list_for_trash_folders: &'static Path,
     pub path_list_for_create_folders: &'static Path,
+    pub path_powershell_script_change_readonly: &'static Path,
+    pub path_powershell_script_change_modified_datetime: &'static Path,
 }
 
 /// This trait defines what functions must the bin project implement then the lib project can use them.  

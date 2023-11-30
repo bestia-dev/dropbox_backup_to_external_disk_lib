@@ -56,7 +56,7 @@ pub fn list_local(
             // I don't need the "base" folder in this list
             if !str_path.trim_start_matches(&ext_disk_base_path).is_empty() {
                 folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&ext_disk_base_path),));
-                // TODO: don't print every folder, because print is slow. Check if 100ms passed
+                // don't print every folder, because print is slow. Check if 100ms passed
                 if last_send_ms.elapsed().as_millis() >= 100 {
                     println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&ext_disk_base_path), 80)), "L0");
 
@@ -105,7 +105,12 @@ pub fn list_local(
 
 /// The backup files must not be readonly to allow copying the modified file from the remote.
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
-pub fn read_only_remove(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_destination_readonly_files: &mut FileTxt) -> Result<(), LibError> {
+pub fn read_only_remove(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &Path,
+    file_destination_readonly_files: &mut FileTxt,
+    file_powershell_script_change_readonly: &mut FileTxt,
+) -> Result<(), LibError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
     let mut warning_shown_already = false;
     let mut there_is_a_readonly_files = false;
@@ -123,8 +128,9 @@ pub fn read_only_remove(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_pa
                         if !warning_shown_already {
                             warning_shown_already = true;
                             let warning_wsl_cannot_change_attr_in_win = "Warning!!! 
-From WSL it is not possible to change readonly attributes in Windows folders. 
-You have to do it manually in PowerShell.";
+From WSL Debian it is not possible to change readonly attributes of files on external exFAT disk. 
+I will write a powershell script ps_change_readonly.ps
+Then you can run it in PowerShell.";
                             println_to_ui_thread(&ui_tx, format!("{warning_wsl_cannot_change_attr_in_win}"));
                         }
                         // from WSL Debian I cannot change the readonly flag on the external disk mounted in Windows
@@ -137,7 +143,8 @@ You have to do it manually in PowerShell.";
                             let win_path = win_path.replacen("/", ":/", 1);
                             // replace all / with \
                             let win_path = win_path.replace("/", r#"\"#);
-                            println_to_ui_thread(&ui_tx, format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false"));
+                            let ps = format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false");
+                            file_powershell_script_change_readonly.write_append_str(&ps)?;
                         }
                     }
                 }
