@@ -121,7 +121,6 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
             println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count {all_file_count}"), "R0");
             let string_file_list = crate::utils_mod::sort_list(file_list_all);
             file_list_source_files.write_append_str(&string_file_list).expect("Bug: file_list_source_files must be writable");
-
         }
     });
 
@@ -387,7 +386,7 @@ The workaround is to run manually the generated powershell script temp_data/powe
                         Path::new(path_to_download),
                         files_append_tx_move_to_closure,
                     ) {
-                        Ok(()) => {},
+                        Ok(()) => {}
                         Err(err) => println_to_ui_thread_with_thread_name(&ui_tx_move_to_closure_2, format!("Error in thread {err}"), &format!("R{thread_num}")),
                     }
                 }

@@ -99,7 +99,7 @@ pub fn list_local(
 
     println_to_ui_thread_with_thread_name(&ui_tx, format!("Local folder count: {folder_count}"), "L0");
     println_to_ui_thread_with_thread_name(&ui_tx, format!("Local file count: {file_count}"), "L0");
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count() ), "L0");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count()), "L0");
 
     Ok(())
 }
