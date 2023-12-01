@@ -63,67 +63,66 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
     file_list_source_folders.empty()?;
 
     let token = get_authorization_token()?;
-    let token_clone_1 = token.to_owned().clone();
-    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone_1);
-
-    // channel for inter-thread communication to send folder/files lists
-    let (list_tx, list_rx) = mpsc::channel();
-    let list_tx_move_to_closure = list_tx.clone();
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token.clone());
+    let client_ref = &client;
     // walkdir non-recursive for the first level of folders
     let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx.clone())?;
 
-    let mut folder_list_all = vec![];
-    let mut file_list_all = file_list_root;
-    let ui_tx_move_to_closure = ui_tx.clone();
-
-    // these folders will request walkdir recursive in parallel
-    // loop in a new thread, so the send msg will come immediately
-    let _sender_thread = std::thread::spawn(move || {
-        let ui_tx_2 = ui_tx_move_to_closure.clone();
-        let list_tx_2 = list_tx_move_to_closure.clone();
-        // threadpool with 3 threads
-        let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().expect("Bug: rayon ThreadPoolBuilder");
-        pool.scope(|scoped| {
-            for folder_path in &folder_list_root {
-                // these variables will be moved/captured into the closure
-                let folder_path = folder_path.clone();
-                let token_clone2 = token.to_owned().clone();
-                let ui_tx_3 = ui_tx_2.clone();
-                let list_tx_3 = list_tx_2.clone();
+    // threadpool with 8 threads
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().expect("Bug: rayon ThreadPoolBuilder");
+    pool.scope({
+        // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
+        let mut folder_list_all = vec![];
+        let mut file_list_all = file_list_root;
+        // channel for inter-thread communication to send folder/files lists
+        let (list_tx, list_rx) = mpsc::channel();
+        // only the closure is actually spawned, because it is the return value of the block
+        move |scoped| {
+            // these folders will request walkdir recursive in parallel
+            // loop in a new thread, so the send msg will come immediately
+            for folder_path in folder_list_root.iter() {
                 // execute in a separate threads, or waits for a free thread from the pool
                 // scoped.spawn closure cannot return a Result<>, but it can send it as inter-thread message
-                scoped.spawn(move |_s| {
-                    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token_clone2.to_owned());
-                    // recursive walkdir
-                    let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
-
-                    list_tx_3.send(list_remote_folder(&client, &folder_path, thread_num, true, ui_tx_3)).expect("Bug: mpsc send");
-                    // TODO: this send raises error? Why? The receiver should be alive for all the duration until all clones are alive.
+                scoped.spawn({
+                    // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
+                    // We are in a loop here. It means for every round we need new clones to move/capture/consume.
+                    let folder_path = folder_path.clone();
+                    let ui_tx_move_to_closure = ui_tx.clone();
+                    let ui_tx_move_to_closure_2 = ui_tx.clone();
+                    let list_tx_move_to_closure = list_tx.clone();
+                    // only the closure is actually spawned, because it is the return value of the block
+                    move |_| {
+                        let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
+                        // catch propagated errors and communicate errors to user or developer
+                        // spawned closure cannot propagate error with ?
+                        match list_remote_folder(client_ref, &folder_path, thread_num, true, ui_tx_move_to_closure) {
+                            Ok(folder_list_and_file_list) => list_tx_move_to_closure.send(folder_list_and_file_list).expect("Bug: mpsc send"),
+                            Err(err) => println_to_ui_thread_with_thread_name(&ui_tx_move_to_closure_2, format!("Error in thread {err}"), &format!("R{thread_num}")),
+                        }
+                    }
                 });
             }
-        });
+
+            // the receiver reads all msgs from the queue
+            drop(list_tx);
+            let mut all_folder_count = 0;
+            let mut all_file_count = 0;
+            for (folder_list, file_list) in &list_rx {
+                all_folder_count += folder_list.len();
+                all_file_count += file_list.len();
+                folder_list_all.extend_from_slice(&folder_list);
+                file_list_all.extend_from_slice(&file_list);
+            }
+
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0");
+            let string_file_list = crate::utils_mod::sort_list(file_list_all);
+            file_list_source_files.write_append_str(&string_file_list).expect("Bug: file_list_source_files must be writable");
+
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0");
+            let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
+            file_list_source_folders.write_append_str(&string_folder_list).expect("Bug: file_list_source_folders must be writable");
+        }
     });
-
-    // the receiver reads all msgs from the queue
-    drop(list_tx);
-    let mut all_folder_count = 0;
-    let mut all_file_count = 0;
-    for msg in &list_rx {
-        // the Result received from a thread will be propagated here
-        let (folder_list, file_list) = msg?;
-        all_folder_count += folder_list.len();
-        all_file_count += file_list.len();
-        folder_list_all.extend_from_slice(&folder_list);
-        file_list_all.extend_from_slice(&file_list);
-    }
-
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0");
-    let string_file_list = crate::utils_mod::sort_list(file_list_all);
-    file_list_source_files.write_append_str(&string_file_list)?;
-
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0");
-    let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
-    file_list_source_folders.write_append_str(&string_folder_list)?;
 
     Ok(())
 }
@@ -288,10 +287,15 @@ pub fn download_one_file(
     file_list_just_downloaded: &mut FileTxt,
     file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
-
     let path_str = path_to_download.to_string_lossy().to_string();
     let mut vec_list_for_download: Vec<&str> = vec![&path_str];
-    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_list_just_downloaded, file_powershell_script_change_modified_datetime)?;
+    download_from_vec(
+        ui_tx,
+        ext_disk_base_path,
+        &mut vec_list_for_download,
+        file_list_just_downloaded,
+        file_powershell_script_change_modified_datetime,
+    )?;
 
     Ok(())
 }
@@ -310,9 +314,9 @@ pub fn download_from_list(
 
     //remove list_just_downloaded from list_for_download
     let list_just_downloaded = file_list_just_downloaded.read_to_string()?;
-    if !list_just_downloaded.is_empty(){
+    if !list_just_downloaded.is_empty() {
         let vec_list_just_downloaded: Vec<&str> = list_just_downloaded.lines().collect();
-        for just_downloaded in vec_list_just_downloaded.iter(){
+        for just_downloaded in vec_list_just_downloaded.iter() {
             vec_list_for_download.retain(|line| !line.starts_with(just_downloaded))
         }
         let string_for_download = vec_list_for_download.join("\n");
@@ -321,7 +325,13 @@ pub fn download_from_list(
         file_list_just_downloaded.empty()?;
     }
 
-    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download,file_list_just_downloaded, file_powershell_script_change_modified_datetime)?;
+    download_from_vec(
+        ui_tx,
+        ext_disk_base_path,
+        &mut vec_list_for_download,
+        file_list_just_downloaded,
+        file_powershell_script_change_modified_datetime,
+    )?;
 
     Ok(())
 }
@@ -335,7 +345,8 @@ fn download_from_vec(
 ) -> Result<(), LibError> {
     println_to_ui_thread_with_thread_name(
         &ui_tx,
-        format!(r#"
+        format!(
+            r#"
 If you are running this program on WSL Debian then it cannot change 
 the modified datetime of the files on an external disk with exFAT. I don't know why! :-(
 The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps
@@ -350,41 +361,57 @@ The workaround is to run manually the generated powershell script temp_data/powe
     let client_ref = &client;
     // channel for inter-thread communication to send messages that will be appended to files
     let (files_append_tx, files_append_rx) = mpsc::channel();
-    // 3 threads to download in parallel
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
+    //8 threads to download in parallel
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
     pool.scope(move |scoped| {
         for line_path_to_download in vec_list_for_download.iter() {
-            let line: Vec<&str> = line_path_to_download.split("\t").collect();
-            let path_to_download = line[0];
-            let ui_tx_clone = ui_tx.clone();
-            let files_append_tx_move_to_closure = files_append_tx.clone();
-            // execute in 3 separate threads, or waits for a free thread from the pool
-            scoped.spawn(move |_s| {
-                let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
-                download_internal(ui_tx_clone, ext_disk_base_path, client_ref, thread_num as i32, Path::new(path_to_download), files_append_tx_move_to_closure).expect("Bug: download_internal must succeed");
+            // execute in 4 separate threads, or waits for a free thread from the pool
+            scoped.spawn({
+                // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
+                let line: Vec<&str> = line_path_to_download.split("\t").collect();
+                let path_to_download = line[0];
+                let ui_tx_clone = ui_tx.clone();
+                let ui_tx_move_to_closure_2 = ui_tx.clone();
+                let files_append_tx_move_to_closure = files_append_tx.clone();
+                // only the closure is actually spawned, because it is the return value of the block
+                move |_| {
+                    let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+                    // catch propagated errors and communicate errors to user or developer
+                    // spawned closure cannot propagate error with ?
+                    match download_internal(
+                        ui_tx_clone,
+                        ext_disk_base_path,
+                        client_ref,
+                        thread_num as i32,
+                        Path::new(path_to_download),
+                        files_append_tx_move_to_closure,
+                    ) {
+                        Ok(()) => {},
+                        Err(err) => println_to_ui_thread_with_thread_name(&ui_tx_move_to_closure_2, format!("Error in thread {err}"), &format!("R{thread_num}")),
+                    }
+                }
             });
         }
 
         // the receiver reads all msgs from the queue
         // and them appends it neatly in files. Because only this thread writes to files there cannot be data race condition.
         drop(files_append_tx);
-        for (just_downloaded,ps_command) in &files_append_rx {
-            if !just_downloaded.is_empty(){
+        for (just_downloaded, ps_command) in &files_append_rx {
+            if !just_downloaded.is_empty() {
                 file_list_just_downloaded
                     .write_append_str(&format!("{just_downloaded}\n"))
                     .expect("Bug: file_list_just_downloaded must be writable.");
-           }
-            if !ps_command.is_empty(){
+            }
+            if !ps_command.is_empty() {
                 file_powershell_script_change_modified_datetime
                     .write_append_str(&format!("{ps_command}\n"))
                     .expect("Bug: file_powershell_script_change_modified_datetime must be writable.");
-           }
+            }
         }
     });
 
     Ok(())
 }
-
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
@@ -393,7 +420,7 @@ fn download_internal(
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     thread_num: i32,
     path_to_download: &Path,
-    files_append_tx: mpsc::Sender<(String,String)>,
+    files_append_tx: mpsc::Sender<(String, String)>,
 ) -> Result<(), LibError> {
     let thread_name = format!("R{thread_num}");
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
@@ -406,7 +433,7 @@ fn download_internal(
 
     let modified_str;
     let metadata_size;
-    let mut just_downloaded=String::new();
+    let mut just_downloaded = String::new();
 
     // get datetime from remote
     let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string_lossy().to_string());
@@ -442,7 +469,7 @@ fn download_internal(
         // I will download to a temp folder and then move the file to the right folder only when the download is complete.
         'download: loop {
             // TODO: I want to press a key to stop the downloading gracefully
-            // but this thread is NOT the ui thread                                
+            // but this thread is NOT the ui thread
             let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
             match result {
                 Ok(Ok(download_result)) => {
@@ -505,7 +532,7 @@ fn download_internal(
     // cannot change the LastWrite/modified time from the container in WSL to external exFAT on Windows
     // I will instead write a Powershell script to run manually after the program.
     // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
-    let mut ps_command=String::new();
+    let mut ps_command = String::new();
     match filetime::set_file_times(&local_path, modified, modified) {
         Ok(()) => (),
         Err(_) => {
@@ -525,7 +552,7 @@ fn download_internal(
     // I send 2 strings for 2 files: file_list_just_downloaded and file_powershell_script_change_modified_datetime
     // Both of them can be empty. That will not be appended to the file.
 
-    files_append_tx.send((just_downloaded,ps_command)).expect("Bug: mpsc send");
+    files_append_tx.send((just_downloaded, ps_command)).expect("Bug: mpsc send");
 
     Ok(())
 }

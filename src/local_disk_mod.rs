@@ -46,7 +46,8 @@ pub fn list_local(
     let mut folder_count = 0;
     let mut file_count = 0;
     let mut last_send_ms = std::time::Instant::now();
-    for entry in WalkDir::new(&ext_disk_base_path) {
+    let walkdir_iterator = WalkDir::new(&ext_disk_base_path);
+    for entry in walkdir_iterator {
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
