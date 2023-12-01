@@ -88,8 +88,6 @@ pub fn list_local(
         }
     }
 
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("local_folder_count: {folder_count}"), "L0");
-
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
     let folders_sorted_string = crate::sort_string_lines(&folders_string);
@@ -99,7 +97,9 @@ pub fn list_local(
     file_list_destination_folders.write_append_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_append_str(&readonly_files_sorted_string)?;
 
-    println_to_ui_thread_with_thread_name(&ui_tx, "All lists stored in files.".to_string(), "L0");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local folder count: {folder_count}"), "L0");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local file count: {file_count}"), "L0");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count() ), "L0");
 
     Ok(())
 }

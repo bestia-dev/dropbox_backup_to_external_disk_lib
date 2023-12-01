@@ -114,13 +114,14 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
                 file_list_all.extend_from_slice(&file_list);
             }
 
-            println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list file sort {all_file_count}"), "R0");
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote folder count: {all_folder_count}"), "R0");
+            let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
+            file_list_source_folders.write_append_str(&string_folder_list).expect("Bug: file_list_source_folders must be writable");
+
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count {all_file_count}"), "R0");
             let string_file_list = crate::utils_mod::sort_list(file_list_all);
             file_list_source_files.write_append_str(&string_file_list).expect("Bug: file_list_source_files must be writable");
 
-            println_to_ui_thread_with_thread_name(&ui_tx, format!("remote list folder sort: {all_folder_count}"), "R0");
-            let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
-            file_list_source_folders.write_append_str(&string_folder_list).expect("Bug: file_list_source_folders must be writable");
         }
     });
 
