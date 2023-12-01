@@ -94,7 +94,7 @@ And another REGEX surprise. I try to have all text files delimited with the unix
 
 Simple text files are a terrible way to store data that needs to be changed. It is ok for write once and then read. But there is not a good way to modify only one line inside a big text file. The recommended approach is read all, modify, save all. If the memory is not big enough then use a buffer to read a segment, modify, save a segment, repeat to end.  
 There is another approach called memory map to file, but everybody is trying to avoid it because some other process could modify the file when in use and make it garbage.  
-Sounds like a database is always a better choice for more agile development. In this project, I will create additional files that only append lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded_or_moved.csv is added to list_destination_files.csv.  
+Sounds like a database is always a better choice for more agile development. In this project, I will create additional files that only append lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded.csv is added to list_destination_files.csv.  
 
 ### how to invert black-white in paint.net for dark theme
 
@@ -107,6 +107,36 @@ Invert only black and white is for image transformation to `dark theme`.
 4. Invert Colors bottom layer.
 5. Adjust Contrast to 0 on top layer.
 6. Change top layer blending mode to overlay.
+
+## Windows PowerShell and UTF8
+
+Incredible incredible incredible!  
+From Debian my program made a powershell script to change attributes of files: readonly and modified datetime.
+The filenames contains unicode international characters. All should work fine,
+But not !!!
+When I copy filenames with "čšž" from Debian to the Powershel terminal it ignores the unicode characters.
+What? 
+We live in 2023 and PowerShell is like the mpodern spin of the Command Prompt and it does not work with unicode?
+What a disapointment :-(
+
+The version of PowerShell in Win10 in 5.1 and it is called internally "Windows PowerShell".
+
+```powershell
+$PSVersionTable
+```
+
+This version of PowerShell works in a specific code page that is NOT unicode, but CodePage: 20127, WindowsCodePage: 1252. Terrible choice. 
+
+The new version of PowerShell is 7.1 and is called "PowerShell Core". The old PS cannot be upgraded to the new one. They must be installed side-by-side.
+
+```powershell
+winget search Microsoft.PowerShell
+winget install --id Microsoft.Powershell --source winget
+```
+
+Now I have a separate terminal with PSVersion 7.4.0. It is not blue anymore, but black. Wow Microsoft!
+Incredible! They make it work! Unicode works with PowerShell in 2023. Heureka!
+
 
 ## TODO
 

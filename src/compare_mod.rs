@@ -165,7 +165,7 @@ pub fn compare_folders(
 /// add just downloaded files to list_local (from dropbox remote)
 pub fn add_just_downloaded_to_list_local(app_config: &'static AppConfig) {
     let path_list_local_files = app_config.path_list_destination_files;
-    add_just_downloaded_to_list_local_internal(app_config.path_list_just_downloaded_or_moved, path_list_local_files);
+    add_just_downloaded_to_list_local_internal(app_config.path_list_just_downloaded, path_list_local_files);
 }
 
 /// add lines from just_downloaded to list_local. Only before compare.
@@ -227,8 +227,8 @@ fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, p
         let new_local_files = vec_sorted_local.join("\n");
         unwrap!(fs::write(path_list_local_files, &new_local_files));
 
-        // empty the file temp_data/list_just_downloaded_or_moved.csv
-        // println!("list_just_downloaded_or_moved emptied");
+        // empty the file temp_data/list_just_downloaded.csv
+        // println!("list_just_downloaded emptied");
         unwrap!(fs::write(path_list_just_downloaded, ""));
     }
 }

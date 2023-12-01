@@ -279,61 +279,112 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
     }
 }
 
-/// download one file
+/// download one file is calling internally download_from_vec
+/// This is used just for debugging. For real the user will run download_from_list.
 pub fn download_one_file(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     ext_disk_base_path: &Path,
     path_to_download: &Path,
+    file_list_just_downloaded: &mut FileTxt,
     file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
-    let token = get_authorization_token()?;
-    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    let client_ref = &client;
-    let mut run_manually_powershell_script = false;
-    // channel for inter-thread communication to send powershell script
-    let (powershell_tx, powershell_rx) = mpsc::channel();
-    let powershell_tx_move_to_closure = powershell_tx.clone();
-    // It will download only one file, but I want it to be compatible with the download_from_list
-    // that is why rayon and new thread
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
-    pool.scope(|scoped| {
-        let ui_tx_clone = ui_tx.clone();
-        // execute in 3 separate threads, or waits for a free thread from the pool
-        scoped.spawn(|_s| {
-            let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
-            download_internal(
-                ui_tx_clone,
-                ext_disk_base_path,
-                client_ref,
-                thread_num as i32,
-                Path::new(path_to_download),
-                powershell_tx_move_to_closure,
-            )
-            .expect("Bug: download_internal must succeed");
-        });
-    });
 
-    // the receiver reads all msgs from the queue
-    drop(powershell_tx);
-    for msg in &powershell_rx {
-        file_powershell_script_change_modified_datetime.write_append_str(&format!("{msg}\n"))?;
-        run_manually_powershell_script = true;
-    }
-
-    if run_manually_powershell_script {
-        println_to_ui_thread_with_thread_name(
-            &ui_tx,
-            format!(
-                r#"The files are downloaded, but this program cannot change the modified datetime of the files
-because it is not possible from WSL Debian for files on an external disk with exFAT. I don't know why.
-The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps"#
-            ),
-            "",
-        );
-    }
+    let path_str = path_to_download.to_string_lossy().to_string();
+    let mut vec_list_for_download: Vec<&str> = vec![&path_str];
+    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_list_just_downloaded, file_powershell_script_change_modified_datetime)?;
 
     Ok(())
 }
+
+/// download files from list
+/// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
+pub fn download_from_list(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    file_list_for_download: &mut FileTxt,
+    file_list_just_downloaded: &mut FileTxt,
+    file_powershell_script_change_modified_datetime: &mut FileTxt,
+) -> Result<(), LibError> {
+    let list_for_download = file_list_for_download.read_to_string()?;
+    let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
+
+    //remove list_just_downloaded from list_for_download
+    let list_just_downloaded = file_list_just_downloaded.read_to_string()?;
+    if !list_just_downloaded.is_empty(){
+        let vec_list_just_downloaded: Vec<&str> = list_just_downloaded.lines().collect();
+        for just_downloaded in vec_list_just_downloaded.iter(){
+            vec_list_for_download.retain(|line| !line.starts_with(just_downloaded))
+        }
+        let string_for_download = vec_list_for_download.join("\n");
+        file_list_for_download.empty()?;
+        file_list_for_download.write_append_str(&string_for_download)?;
+        file_list_just_downloaded.empty()?;
+    }
+
+    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download,file_list_just_downloaded, file_powershell_script_change_modified_datetime)?;
+
+    Ok(())
+}
+
+fn download_from_vec(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &Path,
+    vec_list_for_download: &mut Vec<&str>,
+    file_list_just_downloaded: &mut FileTxt,
+    file_powershell_script_change_modified_datetime: &mut FileTxt,
+) -> Result<(), LibError> {
+    println_to_ui_thread_with_thread_name(
+        &ui_tx,
+        format!(r#"
+If you are running this program on WSL Debian then it cannot change 
+the modified datetime of the files on an external disk with exFAT. I don't know why! :-(
+The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps
+"#
+        ),
+        "Warning",
+    );
+
+    let token = get_authorization_token()?;
+    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
+    // I have to create a reference before the move-closure. So the reference is moved to the closure and not the object.
+    let client_ref = &client;
+    // channel for inter-thread communication to send messages that will be appended to files
+    let (files_append_tx, files_append_rx) = mpsc::channel();
+    // 3 threads to download in parallel
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
+    pool.scope(move |scoped| {
+        for line_path_to_download in vec_list_for_download.iter() {
+            let line: Vec<&str> = line_path_to_download.split("\t").collect();
+            let path_to_download = line[0];
+            let ui_tx_clone = ui_tx.clone();
+            let files_append_tx_move_to_closure = files_append_tx.clone();
+            // execute in 3 separate threads, or waits for a free thread from the pool
+            scoped.spawn(move |_s| {
+                let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+                download_internal(ui_tx_clone, ext_disk_base_path, client_ref, thread_num as i32, Path::new(path_to_download), files_append_tx_move_to_closure).expect("Bug: download_internal must succeed");
+            });
+        }
+
+        // the receiver reads all msgs from the queue
+        // and them appends it neatly in files. Because only this thread writes to files there cannot be data race condition.
+        drop(files_append_tx);
+        for (just_downloaded,ps_command) in &files_append_rx {
+            if !just_downloaded.is_empty(){
+                file_list_just_downloaded
+                    .write_append_str(&format!("{just_downloaded}\n"))
+                    .expect("Bug: file_list_just_downloaded must be writable.");
+           }
+            if !ps_command.is_empty(){
+                file_powershell_script_change_modified_datetime
+                    .write_append_str(&format!("{ps_command}\n"))
+                    .expect("Bug: file_powershell_script_change_modified_datetime must be writable.");
+           }
+        }
+    });
+
+    Ok(())
+}
+
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
@@ -342,7 +393,7 @@ fn download_internal(
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     thread_num: i32,
     path_to_download: &Path,
-    powershell_tx: mpsc::Sender<String>,
+    files_append_tx: mpsc::Sender<(String,String)>,
 ) -> Result<(), LibError> {
     let thread_name = format!("R{thread_num}");
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
@@ -355,6 +406,8 @@ fn download_internal(
 
     let modified_str;
     let metadata_size;
+    let mut just_downloaded=String::new();
+
     // get datetime from remote
     let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string_lossy().to_string());
     let metadata = (dropbox_sdk::files::get_metadata(client, &get_metadata_arg)?)?;
@@ -413,6 +466,7 @@ fn download_internal(
                                         crate::shorten_string(&path_to_download.to_string_lossy(), 80)
                                     );
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+                                    just_downloaded = path_to_download.to_string_lossy().to_string();
                                 } else {
                                     let string_to_print = format!("{} MB downloaded {}", bytes_out as f64 / 1000000., crate::shorten_string(&path_to_download.to_string_lossy(), 80));
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
@@ -451,6 +505,7 @@ fn download_internal(
     // cannot change the LastWrite/modified time from the container in WSL to external exFAT on Windows
     // I will instead write a Powershell script to run manually after the program.
     // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
+    let mut ps_command=String::new();
     match filetime::set_file_times(&local_path, modified, modified) {
         Ok(()) => (),
         Err(_) => {
@@ -460,91 +515,17 @@ fn download_internal(
                 let win_path = win_path.replacen("/", ":/", 1);
                 // replace all / with \
                 let win_path = win_path.replace("/", r#"\"#);
-                let ps_command = format!(r#"Set-ItemProperty -Path "{win_path}" -Name LastWriteTime -Value {}"#, modified_str);
-                powershell_tx.send(ps_command).expect("Bug: mpsc send");
+                ps_command = format!(r#"Set-ItemProperty -Path "{win_path}" -Name LastWriteTime -Value {}"#, modified_str);
             }
         }
     }
+    // I use the channel files_append_tx to send messages from many threads to just one receiver.
+    // That receiver can append to files without worrying of other threads interfering.
+    // So only a single thread can write to a file. That is then sure to be serial and never in simultaneously (data race).
+    // I send 2 strings for 2 files: file_list_just_downloaded and file_powershell_script_change_modified_datetime
+    // Both of them can be empty. That will not be appended to the file.
 
-    Ok(())
-}
+    files_append_tx.send((just_downloaded,ps_command)).expect("Bug: mpsc send");
 
-/// download files from list
-pub fn download_from_list(
-    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
-    file_list_for_download: &mut FileTxt,
-    file_powershell_script_change_modified_datetime: &mut FileTxt,
-) -> Result<(), LibError> {
-    let list_for_download = file_list_for_download.read_to_string()?;
-    let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
-// TODO: delete all files in the temp_download
-    if !list_for_download.is_empty() {
-        match download_from_list_internal(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_powershell_script_change_modified_datetime) {
-            Ok(()) => {
-                // in case all is ok, write actual situation to disk and continue
-                file_list_for_download.empty()?;
-                file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
-            }
-            Err(err) => {
-                // also in case of error, write the actual situation to disk and return error
-                file_list_for_download.empty()?;
-                file_list_for_download.write_append_str(&vec_list_for_download.join("\n"))?;
-                return Err(err);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn download_from_list_internal(
-    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
-    vec_list_for_download: &mut Vec<&str>,
-    file_powershell_script_change_modified_datetime: &mut FileTxt,
-) -> Result<(), LibError> {
-    let token = get_authorization_token()?;
-    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    let client_ref = &client;
-    let mut run_manually_powershell_script = false;
-    // channel for inter-thread communication to send powershell script
-    let (powershell_tx, powershell_rx) = mpsc::channel();
-    let powershell_tx_move_to_closure = powershell_tx.clone();
-    // 3 threads to download in parallel
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();
-    pool.scope(move |scoped| {
-        let vec_list_for_download_clone = vec_list_for_download.clone();
-        for line_path_to_download in vec_list_for_download_clone.iter() {
-            let line: Vec<&str> = line_path_to_download.split("\t").collect();
-            let path_to_download = line[0];
-            let ui_tx_clone = ui_tx.clone();
-            let powershell_tx_2 = powershell_tx_move_to_closure.clone();
-            // execute in 3 separate threads, or waits for a free thread from the pool
-            scoped.spawn(move |_s| {
-                let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
-                download_internal(ui_tx_clone, ext_disk_base_path, client_ref, thread_num as i32, Path::new(path_to_download), powershell_tx_2).expect("Bug: download_internal must succeed");
-            });
-        }
-        // the receiver reads all msgs from the queue
-        drop(powershell_tx);
-        for msg in &powershell_rx {
-            file_powershell_script_change_modified_datetime
-                .write_append_str(&format!("{msg}\n"))
-                .expect("Bug: ps script must be writable.");
-            run_manually_powershell_script = true;
-        }
-
-        if run_manually_powershell_script {
-            println_to_ui_thread_with_thread_name(
-                &ui_tx,
-                format!(
-                    r#"The files are downloaded, but this program cannot change the modified datetime of the files
-because it is not possible from WSL Debian for files on an external disk with exFAT. I don't know why.
-The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps"#
-                ),
-                "",
-            );
-        }
-    });
     Ok(())
 }
