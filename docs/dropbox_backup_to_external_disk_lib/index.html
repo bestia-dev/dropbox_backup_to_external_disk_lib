@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="generator" content="HTML Tidy for HTML5 for Linux version 5.6.0">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="rustdoc">
+  <meta name="description" content="dropbox_backup_to_external_disk_lib">
+  <title>dropbox_backup_to_external_disk_lib - Rust</title>
+  <link rel="preload" as="font" type="font/woff2" crossorigin="" href="../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin="" href="../static.files/FiraSans-Regular-018c141bf0843ffd.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin="" href="../static.files/FiraSans-Medium-8f9a781e4970d388.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin="" href="../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2">
+  <link rel="preload" as="font" type="font/woff2" crossorigin="" href="../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2">
+  <link rel="stylesheet" href="../static.files/normalize-76eba96aa4d2e634.css">
+  <link rel="stylesheet" href="../static.files/rustdoc-ac92e1bbe349e143.css">
+  <meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="dropbox_backup_to_external_disk_lib" data-themes=
+  "" data-resource-suffix="" data-rustdoc-version="1.76.0 (07dca489a 2024-02-04)" data-channel="1.76.0" data-search-js="search-2b6ce74ff89ae146.js"
+  data-settings-js="settings-4313503d2e1961c2.js">
+  <script src="../static.files/storage-f2adc0d6ca4d09fb.js"></script>
+  <script defer src="../crates.js"></script>
+  <script defer src="../static.files/main-305769736d49e732.js"></script><noscript>
+  <link rel="stylesheet" href="../static.files/noscript-feafe1bb7466e4bd.css"></noscript>
+  <link rel="alternate icon" type="image/png" href="../static.files/favicon-16x16-8b506e7a72182f1c.png">
+  <link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-422f7d1d52889060.png">
+  <link rel="icon" type="image/svg+xml" href="../static.files/favicon-2c020d218678b618.svg">
+</head>
+<body class="rustdoc mod crate">
+  <!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]-->
+  <nav class="mobile-topbar">
+    <button class="sidebar-menu-toggle">☰</button>
+  </nav>
+  <nav class="sidebar">
+    <div class="sidebar-crate">
+      <h2><a href="../dropbox_backup_to_external_disk_lib/index.html">dropbox_backup_to_external_disk_lib</a><span class="version">2.1.70</span></h2>
+    </div>
+    <div class="sidebar-elems">
+      <ul class="block">
+        <li>
+          <a id="all-types" href="all.html">All Items</a>
+        </li>
+      </ul>
+      <section>
+        <ul class="block">
+          <li>
+            <a href="#modules">Modules</a>
+          </li>
+          <li>
+            <a href="#structs">Structs</a>
+          </li>
+          <li>
+            <a href="#enums">Enums</a>
+          </li>
+          <li>
+            <a href="#statics">Statics</a>
+          </li>
+          <li>
+            <a href="#traits">Traits</a>
+          </li>
+          <li>
+            <a href="#functions">Functions</a>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </nav>
+  <div class="sidebar-resizer"></div>
+  <main>
+    <div class="width-limiter">
+      <nav class="sub">
+        <form class="search-form">
+          <div id="sidebar-button" tabindex="-1">
+            <a href="../dropbox_backup_to_external_disk_lib/all.html" title="show sidebar"></a>
+          </div><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder=
+          "Click or press ‘S’ to search, ‘?’ for more options…" type="search">
+          <div id="help-button" tabindex="-1">
+            <a href="../help.html" title="help">?</a>
+          </div>
+          <div id="settings-menu" tabindex="-1">
+            <a href="../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../static.files/wheel-7b819b6101059cd0.svg"></a>
+          </div>
+        </form>
+      </nav>
+      <section id="main-content" class="content">
+        <div class="main-heading">
+          <h1>Crate <a class="mod" href="#">dropbox_backup_to_external_disk_lib</a><button id="copy-path" title="Copy item path to clipboard"><img src=
+          "../static.files/clipboard-7571035ce49a181d.svg" width="19" height="18" alt="Copy item path"></button></h1><span class="out-of-band"><a class="src"
+          href="../src/dropbox_backup_to_external_disk_lib/lib.rs.html#3-20">source</a> · <button id="toggle-all-docs" title=
+          "collapse all docs">[<span>−</span>]</button></span>
+        </div>
+        <details class="toggle top-doc" open="">
+          <summary class="hideme">
+            <span>Expand description</span>
+          </summary>
+          <div class="docblock">
+            <h2 id="dropbox_backup_to_external_disk_lib"><a href="#dropbox_backup_to_external_disk_lib">dropbox_backup_to_external_disk_lib</a></h2>
+            <p><strong>One way sync from dropbox to external disc</strong><br>
+            <em><strong>version: 2.1.70 date: 2024-02-18 author: <a href="https://bestia.dev">bestia.dev</a> repository: <a href=
+            "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/">GitHub</a></strong></em></p>
+            <p><img src="https://img.shields.io/badge/maintained-green" alt="status"> <img src="https://img.shields.io/badge/work_in_progress-yellow" alt=
+            "status"></p>
+            <p><a href="https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src=
+            "https://img.shields.io/badge/Lines_in_Rust-1422-green.svg" alt="Lines in Rust code"></a> <a href=
+            "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src="https://img.shields.io/badge/Lines_in_Doc_comments-97-blue.svg" alt=
+            "Lines in Doc comments"></a> <a href="https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src=
+            "https://img.shields.io/badge/Lines_in_comments-185-purple.svg" alt="Lines in Comments"></a> <a href=
+            "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src="https://img.shields.io/badge/Lines_in_examples-0-yellow.svg" alt=
+            "Lines in examples"></a> <a href="https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src=
+            "https://img.shields.io/badge/Lines_in_tests-0-orange.svg" alt="Lines in tests"></a></p>
+            <p><a href="https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/blob/main/LICENSE"><img src=
+            "https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a> <a href=
+            "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/"><img src=
+            "https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/workflows/RustAction/badge.svg" alt="Rust"></a> <img src=
+            "https://bestia.dev/webpage_hit_counter/get_svg_image/584868797.svg" alt="Hits"></p>
+            <p>Hashtags: #rustlang #tutorial #dropbox #cli #tui<br>
+            My projects on GitHub are more like a tutorial than a finished product: <a href="https://github.com/bestia-dev/tutorials_rust_wasm">bestia-dev
+            tutorials</a>.</p>
+            <h3 id="library-project"><a href="#library-project">Library project</a></h3>
+            <p>This is the library project that contains all the programming logic, but none of the user interface. I will create different projects that
+            contain only the user interface for this library. It will be different user interfaces to show how the same library can be used in different
+            environments.</p>
+            <h3 id="motivation"><a href="#motivation">Motivation</a></h3>
+            <p>On my Dropbox “remote drive” I have more than 1 Terabyte of data in 200 000 files.<br>
+            I own now 4 notebooks, 2 android phones and 1 tablet and not a single one has an internal drive with more than 1 Terabyte. I use Dropbox `Selective
+            Sync`` to sync only the bare minimum I temporarily need on the local device. But I want to have a backup of all of my data. I must have a backup.
+            Better, I want to have 2 backups of all the data on 2 external hard disks in different locations. So if Dropbox go bankrupt, I still have all my
+            data.<br>
+            The original Dropbox Sync app works great for the internal HD, but is “not recommended” for external drives. I also need only one way sync: from
+            remote to local. There exist apps for that:</p>
+            <ul>
+              <li>rclone</li>
+              <li>dropbox_uploader</li>
+            </ul>
+            <p>But I wanted to write something mine for fun, learning Rust and using my own apps. I have a lot of files, so I want to list them first - remote
+            and local. Then compare the lists and finally download the files.<br>
+            Obsolete files will “move to trash folder”, so I can inspect what and how to delete manually.<br>
+            The dropbox remote storage will always be read_only, nothing will be modified there, never, no permission for that.</p>
+            <h3 id="development"><a href="#development">Development</a></h3>
+            <p>I develop in my container image for Rust development inside WSL2 Debian Linux inside Win10. All this is described in my project <a href=
+            "https://github.com/bestia-dev/docker_rust_development">docker_rust_development</a>.<br>
+            I use <a href="https://crates.io/crates/cargo-auto">cargo-auto</a> for automation tasks in Rust language.<br>
+            This is just a library project. There are projects for different user-interfaces that depend on this library. Compile and run them to test the
+            application.</p>
+            <p>Then I use WSL2 (Debian) on Win10 to execute the compiled program.<br>
+            The external disk path from WSL2 looks like this: <code>/mnt/d/DropBoxBackup1</code>.<br>
+            The CLI saves the list of the local files metadata in <code>temp_data/list_destination_files.csv</code>.<br>
+            And the list of the files metadata from the remote Dropbox to in <code>temp_data/list_source_files.csv</code>. Tab delimited with metadata: path
+            (with name), datetime modified, size. The remote path is not really case-sensitive. They try to make it case-preserve, but this apply only to the
+            last part of the path. Before that it is random-case. For big dropbox remotes it can take a while to complete. After the first level folders are
+            listed, I use 3 threads in a ThreadPool to get sub-folders recursively in parallel. It makes it much faster. Also the download of files is in
+            parallel on multiple threads.<br>
+            TODO: If possible copy the local file that is synced with Dropbox instead of download.<br>
+            The sorting of lists is also done in parallel with the crate Rayon.<br>
+            Once the lists are complete the CLI will compare them and create files:<br>
+            <code>list_for_download.csv</code><br>
+            <code>list_for_trash_files.csv</code><br>
+            With this files the CLI will:<br>
+            <code>move_or_rename_local_files</code> if (name, size and file date) are equal, or (size, date and content_hash) <code>trash_files</code> will
+            move the obsolete files into a trash folder<br>
+            <code>download_from_list</code> - this can take a lot of time and it can be stopped with ctrl+c</p>
+            <h3 id="dropbox-api2---stone-sdk"><a href="#dropbox-api2---stone-sdk">DropBox api2 - Stone sdk</a></h3>
+            <p>Dropbox has made a <code>Stone</code> thingy that contains all the API definition. From there is possible to generate code boilerplate for
+            different languages for the api-client.<br>
+            For Rust there is this quasi official project:<br>
+            <a href="https://crates.io/crates/dropbox-sdk">https://crates.io/crates/dropbox-sdk</a></p>
+            <h3 id="rename-or-move"><a href="#rename-or-move">rename or move</a></h3>
+            <p>Often a file is renamed or moved to another folder.<br>
+            I can try to recognize if there is the same file in list_for_trash_files and list_for_download.<br>
+            If the name, size and file date are equal then they are probably the same file.<br>
+            If the name is different, then try if content_hash is equal, but that is slow.</p>
+            <h3 id="learn-something-new-every-day"><a href="#learn-something-new-every-day">Learn something new every day</a></h3>
+            <h4 id="regex-adventure-with-non-breaking-space-and-crlf"><a href="#regex-adventure-with-non-breaking-space-and-crlf">REGEX adventure with
+            non-breaking space and CRLF</a></h4>
+            <p>We all know space. But there are other non-visible characters that are very similar and sometimes impossible to distinguish. Tab is one of them,
+            but it is not so difficult to spot with a quick try.<br>
+            But nbsp non-breaking space, often used in HTML is a catastrophe. There is no way to tell it apart from the normal space. I used a regex to find a
+            match with some spaces. It worked right for a years. Yesterday it didn’t work. If I changed space to <code>\s</code> in the regex expression, it
+            worked, but not with space. I tried everything and didn’t find the cause. Finally I deleted and inserted the space. It works. But how? After a
+            detailed analysis I discovered it was a non-breakable space. This is unicode 160 or \xa0, instead of normal space unicode 32 \x20. Now I will try
+            to find them all and replace with normal space. What a crazy world.<br>
+            And another REGEX surprise. I try to have all text files delimited with the unix standard LF. But somehow the windows standard got mixed and I
+            didn’t recognize it. The regex for <code>end of line</code> $ didn’t work for CRLF. When I changed it to LF, the good life is back and all
+            works.</p>
+            <h4 id="text-files"><a href="#text-files">Text files</a></h4>
+            <p>Simple text files are a terrible way to store data that needs to be changed. It is ok for write once and then read. But there is not a good way
+            to modify only one line inside a big text file. The recommended approach is read all, modify, save all. If the memory is not big enough then use a
+            buffer to read a segment, modify, save a segment, repeat to end.<br>
+            There is another approach called memory map to file, but everybody is trying to avoid it because some other process could modify the file when in
+            use and make it garbage.<br>
+            Sounds like a database is always a better choice for more agile development. In this project, I will create additional files that only append
+            lines. Some kind of journal. And later use this to modify the big text files in one go. For example: list_just_downloaded.csv is added to
+            list_destination_files.csv.</p>
+            <h4 id="how-to-invert-black-white-in-paintnet-for-dark-theme"><a href="#how-to-invert-black-white-in-paintnet-for-dark-theme">how to invert
+            black-white in paint.net for dark theme</a></h4>
+            <p>This is not same as <code>invert color</code>.<br>
+            Invert only black and white is for image transformation to <code>dark theme</code>.</p>
+            <ol>
+              <li>Open image in PdN.</li>
+              <li>Duplicate layer.</li>
+              <li>Convert bottom layer to B/W.</li>
+              <li>Invert Colors bottom layer.</li>
+              <li>Adjust Contrast to 0 on top layer.</li>
+              <li>Change top layer blending mode to overlay.</li>
+            </ol>
+            <h3 id="windows-powershell-and-utf8"><a href="#windows-powershell-and-utf8">Windows PowerShell and UTF8</a></h3>
+            <p>Incredible incredible incredible!<br>
+            From Debian my program made a powershell script to change attributes of files: readonly and modified datetime. The filenames contains unicode
+            international characters. All should work fine, But not !!! When I copy filenames with “čšž” from Debian to the Powershel terminal it ignores the
+            unicode characters. What? We live in 2023 and PowerShell is like the mpodern spin of the Command Prompt and it does not work with unicode? What a
+            disapointment :-(</p>
+            <p>The version of PowerShell in Win10 in 5.1 and it is called internally “Windows PowerShell”.</p>
+            <div class="example-wrap">
+              <pre class="language-powershell"><code>$PSVersionTable
+</code></pre>
+            </div>
+            <p>This version of PowerShell works in a specific code page that is NOT unicode, but CodePage: 20127, WindowsCodePage: 1252. Terrible choice.</p>
+            <p>The new version of PowerShell is 7.1 and is called “PowerShell Core”. The old PS cannot be upgraded to the new one. They must be installed
+            side-by-side.</p>
+            <div class="example-wrap">
+              <pre class="language-powershell"><code>winget search Microsoft.PowerShell
+winget install --id Microsoft.Powershell --source winget
+</code></pre>
+            </div>
+            <p>Now I have a separate terminal with PSVersion 7.4.0. It is not blue anymore, but black. Wow Microsoft! Incredible! They make it work! Unicode
+            works with PowerShell in 2023. Heureka!</p>
+            <h3 id="todo"><a href="#todo">TODO</a></h3>
+            <p>Can I recognize that a directory is moved or renamed? This is common and should be super fast.<br>
+            If most of the files in the directory are equal it means, that it is moved/renamed.<br>
+            Then a new <code>compare_files</code> will generate a new list if there are smaller differences.<br>
+            Is there a limit in the api for file size bigger than 2GB? Why the program crashes without an error? Files with size 0 are not downloaded. Solve
+            empty folders in the program. Make a command inside the program to save the oauth_token.</p>
+            <h3 id="dropbox-basic-account-free-for-testing"><a href="#dropbox-basic-account-free-for-testing">Dropbox basic account (free) for testing</a></h3>
+            <p>I created a free basic account, so I can do testing and examples easily for this project.</p>
+            <p>Generated access token for testing:
+            sl.BpJybWnGH0ZZ1974AAMnahDcyBcwt2_1RSUreTxYabTUNKuoQo4qszwca75_2M5vTzoc5_UbHtI1hux-51MDh4H2vfWwMuJJtf5LkhILJrESLnl7Wf0CORSZ-9snHTxPKUiLaEjU2t4c</p>
+            <h3 id="open-source-and-free-as-a-beer"><a href="#open-source-and-free-as-a-beer">Open-source and free as a beer</a></h3>
+            <p>My open-source projects are free as a beer (MIT license).<br>
+            I just love programming.<br>
+            But I need also to drink. If you find my projects and tutorials helpful, please buy me a beer by donating to my <a href=
+            "https://paypal.me/LucianoBestia">PayPal</a>.<br>
+            You know the price of a beer in your local bar ;-)<br>
+            So I can drink a free beer for your health :-)<br>
+            <a href="https://translate.google.com/?hl=en&amp;sl=sl&amp;tl=en&amp;text=Na%20zdravje&amp;op=translate">Na zdravje!</a> <a href=
+            "https://dictionary.cambridge.org/dictionary/italian-english/alla-salute">Alla salute!</a> <a href=
+            "https://dictionary.cambridge.org/dictionary/german-english/prost">Prost!</a> <a href=
+            "https://matadornetwork.com/nights/how-to-say-cheers-in-50-languages/">Nazdravlje!</a> 🍻</p>
+            <p><a href="https://bestia.dev">//bestia.dev</a><br>
+            <a href="https://github.com/bestia-dev">//github.com/bestia-dev</a><br>
+            <a href="https://bestiadev.substack.com">//bestiadev.substack.com</a><br>
+            <a href="https://youtube.com/@bestia-dev-tutorials">//youtube.com/@bestia-dev-tutorials</a></p>
+          </div>
+        </details>
+        <h2 id="modules" class="section-header"><a href="#modules">Modules</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="mod" href="app_state_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::app_state_mod">app_state_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="compare_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::compare_mod">compare_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="error_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::error_mod">error_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+            <div class="desc docblock-short">
+              I am using the crate thiserror to create an enum for all library errors. It mostly forwards the source “from” error. The library never writes to
+              the screen, because it contains only the logic. Is the bin project that knows if it is CLI, TUI or GUI and it presents the errors to the user and
+              developer. Then in the bin project I use the crate anyhow.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="file_txt_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::file_txt_mod">file_txt_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="local_disk_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::local_disk_mod">local_disk_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+            <div class="desc docblock-short">
+              Module contains all functions for local external disk.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="remote_dropbox_mod/index.html" title=
+              "mod dropbox_backup_to_external_disk_lib::remote_dropbox_mod">remote_dropbox_mod</a><span title="Restricted Visibility">&nbsp;🔒</span>
+            </div>
+            <div class="desc docblock-short">
+              Module contains all the communication with the remote dropbox storage. It uses inter-thread channels to send text to the UserInterface thread. It
+              uses LibError to return error text to the UI thread.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="mod" href="utils_mod/index.html" title="mod dropbox_backup_to_external_disk_lib::utils_mod">utils_mod</a><span title=
+              "Restricted Visibility">&nbsp;🔒</span>
+            </div>
+            <div class="desc docblock-short">
+              A module with often used functions.
+            </div>
+          </li>
+        </ul>
+        <h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="struct" href="struct.AppConfig.html" title="struct dropbox_backup_to_external_disk_lib::AppConfig">AppConfig</a>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="struct" href="struct.FileTxt.html" title="struct dropbox_backup_to_external_disk_lib::FileTxt">FileTxt</a>
+            </div>
+            <div class="desc docblock-short">
+              my object to work with text files
+            </div>
+          </li>
+        </ul>
+        <h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="enum" href="enum.LibError.html" title="enum dropbox_backup_to_external_disk_lib::LibError">LibError</a>
+            </div>
+            <div class="desc docblock-short">
+              list of possible errors from this library
+            </div>
+          </li>
+        </ul>
+        <h2 id="statics" class="section-header"><a href="#statics">Statics</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="static" href="static.APP_STATE.html" title="static dropbox_backup_to_external_disk_lib::APP_STATE">APP_STATE</a>
+            </div>
+            <div class="desc docblock-short">
+              Global variable to store the Application state.<br>
+              Global variables are so complicated in Rust.<br>
+              Read more: <a href="https://www.sitepoint.com/rust-global-variables/">https://www.sitepoint.com/rust-global-variables/</a><br>
+              I will use Multi-threaded Global Variable with Runtime Initialization and Interior Mutability, the most complicated and usable one.<br>
+              All fields are private. Only the methods can be used globally.<br>
+              Example how to use it:
+            </div>
+          </li>
+        </ul>
+        <h2 id="traits" class="section-header"><a href="#traits">Traits</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="trait" href="trait.AppStateMethods.html" title="trait dropbox_backup_to_external_disk_lib::AppStateMethods">AppStateMethods</a>
+            </div>
+            <div class="desc docblock-short">
+              This trait defines what functions must the bin project implement then the lib project can use them.<br>
+              All IO must be defined inside the bin project: UI, env, file access.<br>
+              That way the same lib project can be used from different bin: CLI, TUI, GUI, env, file, network,…<br>
+              These methods will be available globally.
+            </div>
+          </li>
+        </ul>
+        <h2 id="functions" class="section-header"><a href="#functions">Functions</a></h2>
+        <ul class="item-table">
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.compare_files.html" title="fn dropbox_backup_to_external_disk_lib::compare_files">compare_files</a>
+            </div>
+            <div class="desc docblock-short">
+              compare list: the lists and produce list_for_download, list_for_trash_files
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.compare_folders.html" title="fn dropbox_backup_to_external_disk_lib::compare_folders">compare_folders</a>
+            </div>
+            <div class="desc docblock-short">
+              compare folders and write folders to trash into path_list_for_trash_folders the list is already sorted
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.create_folders.html" title="fn dropbox_backup_to_external_disk_lib::create_folders">create_folders</a>
+            </div>
+            <div class="desc docblock-short">
+              create new empty folders
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.download_from_list.html" title="fn dropbox_backup_to_external_disk_lib::download_from_list">download_from_list</a>
+            </div>
+            <div class="desc docblock-short">
+              download files from list It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.download_one_file.html" title="fn dropbox_backup_to_external_disk_lib::download_one_file">download_one_file</a>
+            </div>
+            <div class="desc docblock-short">
+              download one file is calling internally download_from_vec This is used just for debugging. For real the user will run download_from_list.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.encode_token.html" title="fn dropbox_backup_to_external_disk_lib::encode_token">encode_token</a>
+            </div>
+            <div class="desc docblock-short">
+              This is a short-lived token, so security is not my primary concern. But it is bad practice to store anything as plain text. I will encode it and
+              store it in env var. This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.global_app_state.html" title="fn dropbox_backup_to_external_disk_lib::global_app_state">global_app_state</a>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.global_config.html" title="fn dropbox_backup_to_external_disk_lib::global_config">global_config</a>
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.list_local.html" title="fn dropbox_backup_to_external_disk_lib::list_local">list_local</a>
+            </div>
+            <div class="desc docblock-short">
+              the logic is in the LIB project, but all UI is in the CLI project they run on different threads and communicate It uses the global APP_STATE for
+              all config data
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.list_remote.html" title="fn dropbox_backup_to_external_disk_lib::list_remote">list_remote</a>
+            </div>
+            <div class="desc docblock-short">
+              get remote list in parallel first get the first level of folders and then request in parallel sub-folders recursively
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.move_or_rename_local_files.html" title=
+              "fn dropbox_backup_to_external_disk_lib::move_or_rename_local_files">move_or_rename_local_files</a>
+            </div>
+            <div class="desc docblock-short">
+              Files are often moved or renamed After compare, the same file (with different path or name) will be in the list_for_trash_files and in the
+              list_for_download. First for every trash line, we search list_for_download for same size and modified. If found, get the remote_metadata with
+              content_hash and calculate local_content_hash. If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.
+              Remove also the lines in files list_for_trash_files and list_for_download.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.read_only_remove.html" title="fn dropbox_backup_to_external_disk_lib::read_only_remove">read_only_remove</a>
+            </div>
+            <div class="desc docblock-short">
+              The backup files must not be readonly to allow copying the modified file from the remote. The FileTxt is read+write. It is opened in the bin and
+              not in lib, but it is manipulated only in lib.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.shorten_string.html" title="fn dropbox_backup_to_external_disk_lib::shorten_string">shorten_string</a>
+            </div>
+            <div class="desc docblock-short">
+              shorten path for screen to avoid word-wrap
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.sort_string_lines.html" title="fn dropbox_backup_to_external_disk_lib::sort_string_lines">sort_string_lines</a>
+            </div>
+            <div class="desc docblock-short">
+              sort string lines case insensitive
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.test_connection.html" title="fn dropbox_backup_to_external_disk_lib::test_connection">test_connection</a>
+            </div>
+            <div class="desc docblock-short">
+              test authentication with dropbox.com experiment with sending function pointer
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.trash_files.html" title="fn dropbox_backup_to_external_disk_lib::trash_files">trash_files</a>
+            </div>
+            <div class="desc docblock-short">
+              Move to trash folder the files from list_for_trash_files. Ignore if the file does not exist anymore.
+            </div>
+          </li>
+          <li>
+            <div class="item-name">
+              <a class="fn" href="fn.trash_folders.html" title="fn dropbox_backup_to_external_disk_lib::trash_folders">trash_folders</a>
+            </div>
+            <div class="desc docblock-short">
+              Move to trash folder the folders from list_for_trash_folders.
+            </div>
+          </li>
+        </ul>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["create_folders","get_content_hash","list_local","move_internal","move_or_rename_local_files","move_or_rename_local_files_internal_by_hash","move_or_rename_local_files_internal_by_name","read_only_remove","trash_files","trash_files_internal","trash_folders"],"type":["ThreadName"]};

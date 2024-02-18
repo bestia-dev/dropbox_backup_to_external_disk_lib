@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["global_app_state","global_config"],"static":["APP_STATE"],"struct":["AppConfig"],"trait":["AppStateMethods"]};

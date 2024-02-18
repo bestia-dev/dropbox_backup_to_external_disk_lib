@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["compare_files","compare_folders","compare_lists_internal"]};
