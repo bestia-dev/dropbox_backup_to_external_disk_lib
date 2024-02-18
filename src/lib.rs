@@ -1,8 +1,6 @@
 // dropbox_backup_to_external_disk_lib/src/lib.rs
 
-// region: auto_md_to_doc_comments include README.md A //!
-
-// endregion: auto_md_to_doc_comments include README.md A //!
+#![doc=include_str!("../README.md")]
 
 mod app_state_mod;
 mod compare_mod;
