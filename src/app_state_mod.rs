@@ -36,15 +36,17 @@ pub trait AppStateMethods: Sync + Send {
 
 /// Global variable to store the Application state.  
 /// Global variables are so complicated in Rust.  
-/// Read more: https://www.sitepoint.com/rust-global-variables/  
+/// Read more: <https://www.sitepoint.com/rust-global-variables/>  
 /// I will use Multi-threaded Global Variable with Runtime Initialization and Interior Mutability, the most complicated and usable one.  
 /// All fields are private. Only the methods can be used globally.  
 /// Example how to use it:
+/// ```rust ignore
 /// fn global_app_state() -> &'static Box<dyn lib::AppStateMethods> {
 ///     lib::APP_STATE.get().expect("Error OnceCell must not be empty.")
 /// }
 /// println!("{}", global_app_state().ref_app_config().path_list_for_create_folders);
 /// println!("{}", global_app_state().lock_proba());  
+/// ```
 pub static APP_STATE: once_cell::sync::OnceCell<Box<dyn AppStateMethods>> = once_cell::sync::OnceCell::new();
 
 pub fn global_config() -> &'static AppConfig {

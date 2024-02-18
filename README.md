@@ -3,7 +3,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **One way sync from dropbox to external disc**  
-***version: 2.1.70 date: 2023-12-01 author: [bestia.dev](https://bestia.dev) repository: [Github](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
+***version: 2.1.70 date: 2024-02-18 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
 
 [//]: # (auto_cargo_toml_to_md end)
 
@@ -11,9 +11,9 @@
  ![status](https://img.shields.io/badge/work_in_progress-yellow)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1423-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-95-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-187-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1422-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-97-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-185-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
@@ -109,13 +109,13 @@ Invert only black and white is for image transformation to `dark theme`.
 ## Windows PowerShell and UTF8
 
 Incredible incredible incredible!  
-From Debian my program made a powershell script to change attributes of files: readonly and modified datetime.
+From Debian, my program made a PowerShell script to change attributes of files: readonly and modified datetime.
 The filenames contains unicode international characters. All should work fine,
 But not !!!
-When I copy filenames with "čšž" from Debian to the Powershel terminal it ignores the unicode characters.
-What? 
-We live in 2023 and PowerShell is like the mpodern spin of the Command Prompt and it does not work with unicode?
-What a disapointment :-(
+When I copy filenames with "čšž" from Debian to the Powershell terminal it ignores the unicode characters.
+What?  
+We live in 2023 and PowerShell is like the modern spin of the Command Prompt and it does not work with unicode?
+What a disappointment :-(
 
 The version of PowerShell in Win10 in 5.1 and it is called internally "Windows PowerShell".
 
