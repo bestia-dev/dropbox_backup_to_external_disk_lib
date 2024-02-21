@@ -7,8 +7,8 @@
 
 [//]: # (auto_cargo_toml_to_md end)
 
- ![status](https://img.shields.io/badge/maintained-green)
- ![status](https://img.shields.io/badge/work_in_progress-yellow)
+ ![maintained](https://img.shields.io/badge/maintained-green)
+ ![work_in_progress](https://img.shields.io/badge/work_in_progress-yellow)
 
 [//]: # (auto_lines_of_code start)
 [![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1422-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
@@ -19,9 +19,9 @@
 
 [//]: # (auto_lines_of_code end)
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/blob/main/LICENSE)
-[![Rust](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/workflows/RustAction/badge.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-![Hits](https://bestia.dev/webpage_hit_counter/get_svg_image/584868797.svg)
+ [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/blob/main/LICENSE)
+ [![Rust](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/workflows/RustAction/badge.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+ ![dropbox_backup_to_external_disk_lib](https://bestia.dev/webpage_hit_counter/get_svg_image/1784210611.svg)
 
 Hashtags: #rustlang #tutorial #dropbox #cli #tui  
 My projects on GitHub are more like a tutorial than a finished product: [bestia-dev tutorials](https://github.com/bestia-dev/tutorials_rust_wasm).
