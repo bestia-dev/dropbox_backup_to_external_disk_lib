@@ -65,11 +65,11 @@ fn print_help() {
     {YELLOW}This program automates your custom tasks when developing a Rust project.{RESET}
 
     {YELLOW}User defined tasks in automation_tasks_rs:{RESET}
-{GREEN}cargo auto build{RESET}{YELLOW} - builds the crate in debug mode, fmt, increment version{RESET}
-{GREEN}cargo auto release{RESET}{YELLOW} - builds the crate in release mode, fmt, increment version{RESET}
-{GREEN}cargo auto doc{RESET}{YELLOW} - builds the docs, copy to docs directory{RESET}
-{GREEN}cargo auto test{RESET}{YELLOW} - runs all the tests{RESET}
-{GREEN}cargo auto commit_and_push "message"{RESET}{YELLOW} - commits with message and push with mandatory message{RESET}
+{GREEN}cargo auto build{RESET} - {YELLOW}builds the crate in debug mode, fmt, increment version{RESET}
+{GREEN}cargo auto release{RESET} - {YELLOW}builds the crate in release mode, fmt, increment version{RESET}
+{GREEN}cargo auto doc{RESET} - {YELLOW}builds the docs, copy to docs directory{RESET}
+{GREEN}cargo auto test{RESET} - {YELLOW}runs all the tests{RESET}
+{GREEN}cargo auto commit_and_push "message"{RESET} - {YELLOW}commits with message and push with mandatory message{RESET}
     {YELLOW}(If you use SSH, it is easy to start the ssh-agent in the background and ssh-add your credentials for git.){RESET}
 
     {YELLOW}© 2024 bestia.dev  MIT License github.com/bestia-dev/cargo-auto{RESET}
@@ -81,8 +81,8 @@ fn print_help() {
 /// all example commands in one place
 fn print_examples_cmd() {
     /*
-        println!(r#"{YELLOW}run examples:{RESET}{GREEN}
-    cargo run --example example1{RESET}
+        println!(r#"{YELLOW}run examples:{RESET}
+{GREEN}cargo run --example example1{RESET}
     "#);
     */
 }
@@ -191,7 +191,7 @@ fn task_doc() {
     // message to help user with next move
     println!(
         r#"
-    {YELLOW}After `cargo auto doc`, check `docs/index.html`. If ok, then test the documentation code examples{RESET}
+    {YELLOW}After `cargo auto doc`, check `docs/index.html`. If ok then test the documentation code examples{RESET}
 {GREEN}cargo auto test{RESET}
 "#
     );
@@ -202,7 +202,7 @@ fn task_test() {
     cl::run_shell_command("cargo test");
     println!(
         r#"
-    {YELLOW}After `cargo auto test`. If ok, then {RESET}
+    {YELLOW}After `cargo auto test`. If ok then {RESET}
 {GREEN}cargo auto commit_and_push "message"{RESET}
     {YELLOW}with mandatory commit message{RESET}
 "#
