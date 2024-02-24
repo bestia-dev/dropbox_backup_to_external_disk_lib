@@ -16,11 +16,9 @@
     "rust-analyzer.showUnlinkedFileNotification": false,
     "cSpell.words": [
         "bestia",
-        "commitish",
+        "chrono",
         "endregion",
-        "mkdir",
-        "octocrab",
-        "repos",
-        "reqwest"
+        "plantuml",
+        "zcvf"
     ]
 }
