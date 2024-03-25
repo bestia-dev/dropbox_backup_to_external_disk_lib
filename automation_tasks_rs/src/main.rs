@@ -168,7 +168,7 @@ fn task_doc() {
     // tidy HTML is a HTML checker and formatter installed on most Linuxes.
     // If it is not installed run: `sudo apt install -y tidy`
     // From the bash you can install it inside the podman container like this:
-    // `podman exec --user root rust_dev_vscode_cnt apt install -y tidy`
+    // `podman exec --user root crustde_vscode_cnt apt install -y tidy`
     //
     // First we check if tidy is installed on the system
     // Run a dummy command and write the std/err output to tidy_warnings.txt.
