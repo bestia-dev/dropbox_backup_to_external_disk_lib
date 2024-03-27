@@ -48,7 +48,7 @@ The dropbox remote storage will always be read_only, nothing will be modified th
 
 ## Development
 
-I develop in my container image for Rust development inside WSL2 Debian Linux inside Win10. All this is described in my project [crustde_cnt_img_pod](https://github.com/CRUSTDE-Containerized-Rust-DevEnv/crustde_cnt_img_pod).  
+I develop in my container image for Rust development inside WSL2 Debian Linux inside Win10. All this is described in my project [crustde_cnt_img_pod](https://github.com/CRUSTDE-ContainerizedRustDevEnv/crustde_cnt_img_pod).  
 I use [cargo-auto](https://crates.io/crates/cargo-auto) for automation tasks in Rust language.  
 This is just a library project. There are projects for different user-interfaces that depend on this library. Compile and run them to test the application.  
 
