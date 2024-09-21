@@ -5,7 +5,9 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **One way sync from dropbox to external disc**  
-***version: 2.1.70 date: 2024-02-18 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***  
+***version: 2.1.71 date: 2024-09-20 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
+
+ ![dropbox](https://img.shields.io/badge/dropbox-orange)
 
 [//]: # (auto_cargo_toml_to_md end)
 
