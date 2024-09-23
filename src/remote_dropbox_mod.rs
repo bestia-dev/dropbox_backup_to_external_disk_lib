@@ -24,9 +24,11 @@ type TokenEnc = String;
 /// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
 pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), LibError> {
     // every time, the master key will be random and temporary
-    let master_key = fernet::Fernet::generate_key();
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet key is not correct."))?;
-    let token_enc = fernet.encrypt(token.as_bytes());
+    // TODO: fernet is using OpenSSL and that cannot be cross-compile to windows
+    // TODO: use some other method of encryption. For now no encryption at all.
+
+    let token_enc = token;
+    let master_key = String::new();
     Ok((master_key, token_enc))
 }
 
@@ -42,10 +44,10 @@ pub fn test_connection() -> Result<(), LibError> {
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    let (master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet master key is not correct."))?;
-    let token = fernet.decrypt(&token_enc)?;
-    let token = String::from_utf8(token)?;
+    let (_master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
+    // TODO: decrypt with fernet was using OpenSSL, that cannot be cross-compiled. Use some other encryption method.
+    // TODO: for now just don't encrypt
+    let token = token_enc;
     // return
     Ok(dropbox_sdk::oauth2::Authorization::from_access_token(token))
 }

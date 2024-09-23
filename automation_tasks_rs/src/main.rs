@@ -16,7 +16,7 @@ use cl::RESET;
 use cl::YELLOW;
 
 // traits must be in scope (Rust strangeness)
-use cgl::SendToGitHubApi;
+// use cgl::SendToGitHubApi;
 use cl::CargoTomlPublicApiMethods;
 use cl::ShellCommandLimitedDoubleQuotesSanitizerTrait;
 
@@ -101,7 +101,7 @@ fn panic_set_hook(panic_info: &std::panic::PanicInfo) {
 
 /// match arguments and call tasks functions
 fn match_arguments_and_call_tasks(mut args: std::env::Args) {
-    // the first argument is the user defined task: (no argument for help), build, release,...
+    // the first argument is the user defined task: (no argument for help), build, release_win,...
     let arg_1 = args.next();
     match arg_1 {
         None => print_help(),
@@ -112,8 +112,8 @@ fn match_arguments_and_call_tasks(mut args: std::env::Args) {
                 println!("{YELLOW}Running automation task: {task}{RESET}");
                 if &task == "build" {
                     task_build();
-                } else if &task == "release" {
-                    task_release();
+                } else if &task == "release_win" {
+                    task_release_win();
                 } else if &task == "doc" {
                     task_doc();
                 } else if &task == "test" {
@@ -139,7 +139,7 @@ fn print_help() {
 
     {YELLOW}User defined tasks in automation_tasks_rs:{RESET}
 {GREEN}cargo auto build{RESET} - {YELLOW}builds the crate in debug mode, fmt, increment version{RESET}
-{GREEN}cargo auto release{RESET} - {YELLOW}builds the crate in release mode, fmt, increment version{RESET}
+{GREEN}cargo auto release_win{RESET} - {YELLOW}builds the crate in release mode (cross compile to win), fmt, increment version{RESET}
 {GREEN}cargo auto doc{RESET} - {YELLOW}builds the docs, copy to docs directory{RESET}
 {GREEN}cargo auto test{RESET} - {YELLOW}runs all the tests{RESET}
 {GREEN}cargo auto commit_and_push "message"{RESET} - {YELLOW}commits with message and push with mandatory message{RESET}
@@ -176,7 +176,7 @@ fn completion() {
     let last_word = args[3].as_str();
 
     if last_word == "cargo-auto" || last_word == "auto" {
-        let sub_commands = vec!["build", "release", "doc", "test", "commit_and_push"];
+        let sub_commands = vec!["build", "release_win", "doc", "test", "commit_and_push"];
         cl::completion_return_one_or_more_sub_commands(sub_commands, word_being_completed);
     }
     /*
@@ -201,14 +201,14 @@ fn task_build() {
     println!(
         r#"
     {YELLOW}After `cargo auto build`, run the project for the binary, examples and/or tests{RESET}
-{GREEN}cargo auto release{RESET}
+{GREEN}cargo auto release_win{RESET}
 "#,
     );
     print_examples_cmd();
 }
 
-/// cargo build --release
-fn task_release() {
+/// cargo build --release_win
+fn task_release_win() {
     // let cargo_toml = cl::CargoToml::read();
     cl::auto_version_increment_semver_or_date();
     cl::auto_cargo_toml_to_md();
@@ -226,7 +226,7 @@ fn task_release() {
 
     println!(
         r#"
-    {YELLOW}After `cargo auto release`, run the project for the binary, examples and/or tests{RESET}
+    {YELLOW}After `cargo auto release_win`, run the project for the binary, examples and/or tests{RESET}
 {GREEN}cargo auto doc{RESET}
 "#,
     );
