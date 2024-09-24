@@ -88,6 +88,13 @@ pub fn list_local(
         }
     }
 
+    // Windows uses backslash instead of slash. Bad Microsoft!!!
+    // replace all backslash with slash to make it Linux comparable
+    // the sorting depends of this replace
+    let files_string = files_string.replace(r#"\"#, r#"/"#);
+    let folders_string = folders_string.replace(r#"\"#, r#"/"#);
+    let readonly_files_string = readonly_files_string.replace(r#"\"#, r#"/"#);
+
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
     let folders_sorted_string = crate::sort_string_lines(&folders_string);

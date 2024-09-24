@@ -41,6 +41,7 @@
         "filetxt",
         "globalenv",
         "hasher",
+        "Heureka",
         "humantime",
         "mkdir",
         "nanos",
@@ -71,6 +72,7 @@
         "threadpool",
         "unhide",
         "walkdir",
+        "winget",
         "zcvf",
         "zdravje"
     ]

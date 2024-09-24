@@ -52,11 +52,6 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, L
     Ok(dropbox_sdk::oauth2::Authorization::from_access_token(token))
 }
 
-#[allow(unused_imports)]
-use std::collections::VecDeque;
-use std::path::Path;
-use std::sync::mpsc;
-
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
 pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut file_list_source_files: FileTxt, mut file_list_source_folders: FileTxt) -> Result<(), LibError> {
@@ -77,7 +72,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
         let mut folder_list_all = vec![];
         let mut file_list_all = file_list_root;
         // channel for inter-thread communication to send folder/files lists
-        let (list_tx, list_rx) = mpsc::channel();
+        let (list_tx, list_rx) = std::sync::mpsc::channel();
         // only the closure is actually spawned, because it is the return value of the block
         move |scoped| {
             // these folders will request walkdir recursive in parallel
@@ -135,7 +130,7 @@ pub fn list_remote_folder(
     path: &str,
     thread_num: ThreadNum,
     recursive: bool,
-    ui_tx: mpsc::Sender<(String, ThreadName)>,
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
 ) -> Result<FolderListAndFileList, LibError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
@@ -226,7 +221,7 @@ fn dropbox_list_folder<'a>(
 /// iterator for Directory on remote Dropbox storage
 struct DirectoryIterator<'a> {
     client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
-    buffer: VecDeque<dropbox_sdk::files::Metadata>,
+    buffer: std::collections::VecDeque<dropbox_sdk::files::Metadata>,
     cursor: Option<String>,
 }
 
@@ -284,8 +279,8 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
 /// This is used just for debugging. For real the user will run download_from_list.
 pub fn download_one_file(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
-    path_to_download: &Path,
+    ext_disk_base_path: &std::path::Path,
+    path_to_download: &std::path::Path,
     file_list_just_downloaded: &mut FileTxt,
     file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
@@ -306,7 +301,7 @@ pub fn download_one_file(
 /// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
 pub fn download_from_list(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &std::path::Path,
     file_list_for_download: &mut FileTxt,
     file_list_just_downloaded: &mut FileTxt,
     file_powershell_script_change_modified_datetime: &mut FileTxt,
@@ -340,7 +335,7 @@ pub fn download_from_list(
 
 fn download_from_vec(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &std::path::Path,
     vec_list_for_download: &mut Vec<&str>,
     file_list_just_downloaded: &mut FileTxt,
     file_powershell_script_change_modified_datetime: &mut FileTxt,
@@ -362,7 +357,7 @@ The workaround is to run manually the generated powershell script temp_data/powe
     // I have to create a reference before the move-closure. So the reference is moved to the closure and not the object.
     let client_ref = &client;
     // channel for inter-thread communication to send messages that will be appended to files
-    let (files_append_tx, files_append_rx) = mpsc::channel();
+    let (files_append_tx, files_append_rx) = std::sync::mpsc::channel();
     //8 threads to download in parallel
     let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
     pool.scope(move |scoped| {
@@ -385,7 +380,7 @@ The workaround is to run manually the generated powershell script temp_data/powe
                         ext_disk_base_path,
                         client_ref,
                         thread_num as i32,
-                        Path::new(path_to_download),
+                        std::path::Path::new(path_to_download),
                         files_append_tx_move_to_closure,
                     ) {
                         Ok(()) => {}
@@ -417,12 +412,12 @@ The workaround is to run manually the generated powershell script temp_data/powe
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
-    ui_tx: mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &std::path::Path,
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     thread_num: i32,
-    path_to_download: &Path,
-    files_append_tx: mpsc::Sender<(String, String)>,
+    path_to_download: &std::path::Path,
+    files_append_tx: std::sync::mpsc::Sender<(String, String)>,
 ) -> Result<(), LibError> {
     let thread_name = format!("R{thread_num}");
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
@@ -462,7 +457,7 @@ fn download_internal(
     } else {
         let mut bytes_out = 0u64;
         let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
-        let base_temp_path_to_download = Path::new("temp_data/temp_download");
+        let base_temp_path_to_download = std::path::Path::new("temp_data/temp_download");
         if !base_temp_path_to_download.exists() {
             std::fs::create_dir_all(&base_temp_path_to_download)?;
         }
@@ -479,7 +474,7 @@ fn download_internal(
                     loop {
                         // limit read to 1 MiB per loop iteration so we can output progress
                         // let mut input_chunk = (&mut body).take(1_048_576);
-                        use std::io::Read;
+                        use std::io::Read; //import trait
                         let mut input_chunk = (&mut body).take(1_048_576);
                         match std::io::copy(&mut input_chunk, &mut file) {
                             Ok(0) => {
