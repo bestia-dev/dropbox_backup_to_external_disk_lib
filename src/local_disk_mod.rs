@@ -32,6 +32,8 @@ pub fn list_local(
     mut file_list_destination_folders: FileTxt,
     mut file_list_destination_readonly_files: FileTxt,
 ) -> Result<(), LibError> {
+    let list_local_start = std::time::Instant::now();
+
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
     file_list_destination_files.empty()?;
     file_list_destination_folders.empty()?;
@@ -52,38 +54,48 @@ pub fn list_local(
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
         let str_path = path.to_str().ok_or_else(|| LibError::ErrorFromStr("Error string is not path"))?;
+        // I don't need the "base" folder in this list
+        let str_path_wo_base =str_path.trim_start_matches(&ext_disk_base_path); 
+        // change windows style with backslash to Linux style with slash
+        let str_path_wo_base =str_path_wo_base.replace(r#"\"#, "/");
+        let str_path_wo_base=&str_path_wo_base;
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
-            // I don't need the "base" folder in this list
-            if !str_path.trim_start_matches(&ext_disk_base_path).is_empty() {
-                folders_string.push_str(&format!("{}\n", str_path.trim_start_matches(&ext_disk_base_path),));
-                // don't print every folder, because print is slow. Check if 100ms passed
-                if last_send_ms.elapsed().as_millis() >= 100 {
-                    println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path.trim_start_matches(&ext_disk_base_path), 80)), "L0");
+            if !str_path_wo_base.is_empty() {
+                // avoid the temp_trash folder 
+                if !str_path_wo_base.starts_with("/0_backup_temp"){
+                    folders_string.push_str(&format!("{}\n", str_path_wo_base));
+                    // don't print every folder, because print is slow. Check if 100ms passed
+                    if last_send_ms.elapsed().as_millis() >= 100 {
+                        println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path_wo_base, 80)), "L");
 
-                    last_send_ms = std::time::Instant::now();
+                        last_send_ms = std::time::Instant::now();
+                    }
+                    folder_count += 1;
                 }
-                folder_count += 1;
             }
         } else {
             // write csv tab delimited
             // metadata() in wsl/Linux is slow. Nothing to do here.
             if let Ok(metadata) = entry.metadata() {
-                use chrono::offset::Utc;
-                use chrono::DateTime;
-                let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
+                if !str_path_wo_base.starts_with("/0_backup_temp"){
+                    use chrono::offset::Utc;
+                    use chrono::DateTime;
+                    let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
 
-                if metadata.permissions().readonly() {
-                    readonly_files_string.push_str(&format!("{}\n", str_path.trim_start_matches(&ext_disk_base_path),));
+                    if metadata.permissions().readonly() {
+                        readonly_files_string.push_str(&format!("{}\n", str_path_wo_base,));
+                    }
+                    files_string.push_str(&format!(
+                        "{}\t{}\t{}\n",
+                        str_path_wo_base,
+                        datetime.format("%Y-%m-%dT%TZ"),
+                        metadata.len()
+                    ));
+                
+
+                    file_count += 1;
                 }
-                files_string.push_str(&format!(
-                    "{}\t{}\t{}\n",
-                    str_path.trim_start_matches(&ext_disk_base_path),
-                    datetime.format("%Y-%m-%dT%TZ"),
-                    metadata.len()
-                ));
-
-                file_count += 1;
             }
         }
     }
@@ -104,9 +116,11 @@ pub fn list_local(
     file_list_destination_folders.write_append_str(&folders_sorted_string)?;
     file_list_destination_readonly_files.write_append_str(&readonly_files_sorted_string)?;
 
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local folder count: {folder_count}"), "L0");
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local file count: {file_count}"), "L0");
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count()), "L0");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local folder count: {folder_count}"), "L");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local file count: {file_count}"), "L");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count()), "L");
+    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local duration in seconds: {}", list_local_start.elapsed().as_secs()), "L");
+
 
     Ok(())
 }
@@ -117,11 +131,8 @@ pub fn read_only_remove(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &Path,
     file_destination_readonly_files: &mut FileTxt,
-    file_powershell_script_change_readonly: &mut FileTxt,
 ) -> Result<(), LibError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
-    let mut warning_shown_already = false;
-    let mut there_is_a_readonly_files = false;
     for string_path_for_readonly in list_destination_readonly_files.lines() {
         let path_global_path_to_readonly = ext_disk_base_path.join(string_path_for_readonly.trim_start_matches("/"));
         // if path does not exist ignore
@@ -131,39 +142,10 @@ pub fn read_only_remove(
                 perms.set_readonly(false);
                 match std::fs::set_permissions(&path_global_path_to_readonly, perms) {
                     Ok(_) => println_to_ui_thread(&ui_tx, format!("{string_path_for_readonly}")),
-                    Err(_err) => {
-                        there_is_a_readonly_files = true;
-                        if !warning_shown_already {
-                            warning_shown_already = true;
-                            let warning_wsl_cannot_change_attr_in_win = "Warning!!! 
-From WSL Debian it is not possible to change readonly attributes of files on external exFAT disk. 
-I will write a powershell script ps_change_readonly.ps
-Then you can run it in PowerShell.";
-                            println_to_ui_thread(&ui_tx, format!("{warning_wsl_cannot_change_attr_in_win}"));
-                        }
-                        // from WSL Debian I cannot change the readonly flag on the external disk mounted in Windows
-                        // I get the error: IoError: Operation not permitted (os error 1)
-                        // Instead I will return the commands to run manually in powershell for Windows
-                        // change /mnt/e/ into e:
-                        if path_global_path_to_readonly.starts_with("/mnt/") {
-                            let win_path = path_global_path_to_readonly.to_string_lossy().trim_start_matches("/mnt/").to_string();
-                            // replace only the first / with :/
-                            let win_path = win_path.replacen("/", ":/", 1);
-                            // replace all / with \
-                            let win_path = win_path.replace("/", r#"\"#);
-                            let ps = format!("Set-ItemProperty -Path \"{win_path}\" -Name IsReadOnly -Value $false");
-                            file_powershell_script_change_readonly.write_append_str(&ps)?;
-                        }
-                    }
+                    Err(_err) => println_to_ui_thread(&ui_tx, format!("Error set_permissions readonly: {string_path_for_readonly}")),
                 }
             }
         }
-    }
-    if !there_is_a_readonly_files {
-        file_destination_readonly_files.empty()?;
-        println_to_ui_thread(&ui_tx, format!("All files are now not-readonly."));
-    } else {
-        println_to_ui_thread(&ui_tx, format!("There is still some readonly files. Rerun the command."));
     }
     Ok(())
 }
@@ -435,7 +417,7 @@ fn trash_files_internal(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_pa
     let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
     let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
     // the trash folder will be inside DropBoxBackup because of permissions
-    let base_trash_path = ext_disk_base_path.join(&now_string);
+    let base_trash_path = ext_disk_base_path.join("0_backup_temp").join(&now_string);
     if !base_trash_path.exists() {
         std::fs::create_dir_all(&base_trash_path)?;
     }
@@ -465,7 +447,7 @@ pub fn trash_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path:
     let mut vec_list_for_trash_folders: Vec<&str> = list_for_trash_folders.lines().collect();
     let vec_list_for_trash_clone = vec_list_for_trash_folders.clone();
     let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
-    let base_trash_path_folders = ext_disk_base_path.join(&now_string);
+    let base_trash_path_folders = ext_disk_base_path.join("0_backup_temp").join(&now_string);
     if !base_trash_path_folders.exists() {
         std::fs::create_dir_all(&base_trash_path_folders).unwrap();
     }

@@ -5,7 +5,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **One way sync from dropbox to external disc**  
-***version: 2.1.91 date: 2024-09-24 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
+***version: 2.1.110 date: 2024-09-24 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
 
  ![dropbox](https://img.shields.io/badge/dropbox-orange)
 
@@ -15,9 +15,9 @@
  ![work_in_progress](https://img.shields.io/badge/work_in_progress-yellow)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1416-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1506-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-97-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-192-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-225-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
