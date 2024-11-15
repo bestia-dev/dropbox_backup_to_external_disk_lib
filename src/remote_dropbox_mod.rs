@@ -24,9 +24,11 @@ type TokenEnc = String;
 /// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
 pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), LibError> {
     // every time, the master key will be random and temporary
-    let master_key = fernet::Fernet::generate_key();
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet key is not correct."))?;
-    let token_enc = fernet.encrypt(token.as_bytes());
+    // TODO: fernet is using OpenSSL and that cannot be cross-compile to windows
+    // TODO: use some other method of encryption. For now no encryption at all.
+
+    let token_enc = token;
+    let master_key = String::new();
     Ok((master_key, token_enc))
 }
 
@@ -42,22 +44,18 @@ pub fn test_connection() -> Result<(), LibError> {
 /// read encoded token (from env), decode and return the authorization token
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
     // the global APP_STATE method reads encoded tokens from env var
-    let (master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
-    let fernet = fernet::Fernet::new(&master_key).ok_or_else(|| LibError::ErrorFromStr("Error Fernet master key is not correct."))?;
-    let token = fernet.decrypt(&token_enc)?;
-    let token = String::from_utf8(token)?;
+    let (_master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
+    // TODO: decrypt with fernet was using OpenSSL, that cannot be cross-compiled. Use some other encryption method.
+    // TODO: for now just don't encrypt
+    let token = token_enc;
     // return
-    Ok(dropbox_sdk::oauth2::Authorization::from_access_token(token))
+    Ok(dropbox_sdk::oauth2::Authorization::from_long_lived_access_token(token))
 }
-
-#[allow(unused_imports)]
-use std::collections::VecDeque;
-use std::path::Path;
-use std::sync::mpsc;
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
 pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut file_list_source_files: FileTxt, mut file_list_source_folders: FileTxt) -> Result<(), LibError> {
+    let list_remote_start = std::time::Instant::now();
     // empty the files. I want all or nothing result here if the process is terminated prematurely.
     file_list_source_files.empty()?;
     file_list_source_folders.empty()?;
@@ -75,7 +73,7 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
         let mut folder_list_all = vec![];
         let mut file_list_all = file_list_root;
         // channel for inter-thread communication to send folder/files lists
-        let (list_tx, list_rx) = mpsc::channel();
+        let (list_tx, list_rx) = std::sync::mpsc::channel();
         // only the closure is actually spawned, because it is the return value of the block
         move |scoped| {
             // these folders will request walkdir recursive in parallel
@@ -114,13 +112,15 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
                 file_list_all.extend_from_slice(&file_list);
             }
 
-            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote folder count: {all_folder_count}"), "R0");
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote folder count: {all_folder_count}"), "R");
             let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
             file_list_source_folders.write_append_str(&string_folder_list).expect("Bug: file_list_source_folders must be writable");
 
-            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count {all_file_count}"), "R0");
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count: {all_file_count}"), "R");
             let string_file_list = crate::utils_mod::sort_list(file_list_all);
             file_list_source_files.write_append_str(&string_file_list).expect("Bug: file_list_source_files must be writable");
+
+            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote duration in seconds: {}", list_remote_start.elapsed().as_secs()), "R");
         }
     });
 
@@ -133,7 +133,7 @@ pub fn list_remote_folder(
     path: &str,
     thread_num: ThreadNum,
     recursive: bool,
-    ui_tx: mpsc::Sender<(String, ThreadName)>,
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
 ) -> Result<FolderListAndFileList, LibError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
@@ -224,7 +224,7 @@ fn dropbox_list_folder<'a>(
 /// iterator for Directory on remote Dropbox storage
 struct DirectoryIterator<'a> {
     client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
-    buffer: VecDeque<dropbox_sdk::files::Metadata>,
+    buffer: std::collections::VecDeque<dropbox_sdk::files::Metadata>,
     cursor: Option<String>,
 }
 
@@ -282,10 +282,9 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
 /// This is used just for debugging. For real the user will run download_from_list.
 pub fn download_one_file(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
-    path_to_download: &Path,
+    ext_disk_base_path: &std::path::Path,
+    path_to_download: &std::path::Path,
     file_list_just_downloaded: &mut FileTxt,
-    file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
     let path_str = path_to_download.to_string_lossy().to_string();
     let mut vec_list_for_download: Vec<&str> = vec![&path_str];
@@ -294,7 +293,6 @@ pub fn download_one_file(
         ext_disk_base_path,
         &mut vec_list_for_download,
         file_list_just_downloaded,
-        file_powershell_script_change_modified_datetime,
     )?;
 
     Ok(())
@@ -304,10 +302,9 @@ pub fn download_one_file(
 /// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
 pub fn download_from_list(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &std::path::Path,
     file_list_for_download: &mut FileTxt,
     file_list_just_downloaded: &mut FileTxt,
-    file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
@@ -330,7 +327,6 @@ pub fn download_from_list(
         ext_disk_base_path,
         &mut vec_list_for_download,
         file_list_just_downloaded,
-        file_powershell_script_change_modified_datetime,
     )?;
 
     Ok(())
@@ -338,29 +334,16 @@ pub fn download_from_list(
 
 fn download_from_vec(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &std::path::Path,
     vec_list_for_download: &mut Vec<&str>,
     file_list_just_downloaded: &mut FileTxt,
-    file_powershell_script_change_modified_datetime: &mut FileTxt,
 ) -> Result<(), LibError> {
-    println_to_ui_thread_with_thread_name(
-        &ui_tx,
-        format!(
-            r#"
-If you are running this program on WSL Debian then it cannot change 
-the modified datetime of the files on an external disk with exFAT. I don't know why! :-(
-The workaround is to run manually the generated powershell script temp_data/powershell_script_change_modified_datetime.ps
-"#
-        ),
-        "Warning",
-    );
-
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     // I have to create a reference before the move-closure. So the reference is moved to the closure and not the object.
     let client_ref = &client;
     // channel for inter-thread communication to send messages that will be appended to files
-    let (files_append_tx, files_append_rx) = mpsc::channel();
+    let (files_append_tx, files_append_rx) = std::sync::mpsc::channel();
     //8 threads to download in parallel
     let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
     pool.scope(move |scoped| {
@@ -383,7 +366,7 @@ The workaround is to run manually the generated powershell script temp_data/powe
                         ext_disk_base_path,
                         client_ref,
                         thread_num as i32,
-                        Path::new(path_to_download),
+                        std::path::Path::new(path_to_download),
                         files_append_tx_move_to_closure,
                     ) {
                         Ok(()) => {}
@@ -393,21 +376,18 @@ The workaround is to run manually the generated powershell script temp_data/powe
             });
         }
 
-        // the receiver reads all msgs from the queue
+        // region: Receiver reads all msgs from the queue
         // and them appends it neatly in files. Because only this thread writes to files there cannot be data race condition.
         drop(files_append_tx);
-        for (just_downloaded, ps_command) in &files_append_rx {
+        for just_downloaded in &files_append_rx {
             if !just_downloaded.is_empty() {
                 file_list_just_downloaded
                     .write_append_str(&format!("{just_downloaded}\n"))
                     .expect("Bug: file_list_just_downloaded must be writable.");
             }
-            if !ps_command.is_empty() {
-                file_powershell_script_change_modified_datetime
-                    .write_append_str(&format!("{ps_command}\n"))
-                    .expect("Bug: file_powershell_script_change_modified_datetime must be writable.");
-            }
         }
+        // endregion: Receiver reads all msgs from the queue
+
     });
 
     Ok(())
@@ -415,12 +395,12 @@ The workaround is to run manually the generated powershell script temp_data/powe
 
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
-    ui_tx: mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &Path,
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    ext_disk_base_path: &std::path::Path,
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     thread_num: i32,
-    path_to_download: &Path,
-    files_append_tx: mpsc::Sender<(String, String)>,
+    path_to_download: &std::path::Path,
+    files_append_tx: std::sync::mpsc::Sender<String>,
 ) -> Result<(), LibError> {
     let thread_name = format!("R{thread_num}");
     let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
@@ -429,8 +409,6 @@ fn download_internal(
     if !parent.exists() {
         std::fs::create_dir_all(parent)?;
     }
-    let file_name = path_to_download.file_name().expect("Bug: Filename must exist.");
-
     let modified_str;
     let metadata_size;
     let mut just_downloaded = String::new();
@@ -447,8 +425,9 @@ fn download_internal(
             return Err(LibError::ErrorFromStr("This is not a file on Dropbox"));
         }
     }
-    let system_time = humantime::parse_rfc3339(&modified_str).expect("Bug: parse_rfc3339 must succeed");
-    let modified = filetime::FileTime::from_system_time(system_time);
+
+    let system_time_modified = humantime::parse_rfc3339(&modified_str).expect("Bug: parse_rfc3339 must succeed");
+    // let modified = filetime::FileTime::from_system_time(system_time_modified);
 
     // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
     if metadata_size == 0 {
@@ -460,12 +439,15 @@ fn download_internal(
     } else {
         let mut bytes_out = 0u64;
         let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
-        let base_temp_path_to_download = Path::new("temp_data/temp_download");
+        let base_temp_path_to_download = ext_disk_base_path.join("0_backup_temp").join("download_temp");
         if !base_temp_path_to_download.exists() {
             std::fs::create_dir_all(&base_temp_path_to_download)?;
         }
-        let temp_local_path = base_temp_path_to_download.join(file_name);
+        let unique_name = local_path.to_string_lossy().replace("/", "_");
+        let temp_local_path = base_temp_path_to_download.join(unique_name);
         let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
+        file.set_modified(system_time_modified).unwrap();
+
         // I will download to a temp folder and then move the file to the right folder only when the download is complete.
         'download: loop {
             // TODO: I want to press a key to stop the downloading gracefully
@@ -477,7 +459,7 @@ fn download_internal(
                     loop {
                         // limit read to 1 MiB per loop iteration so we can output progress
                         // let mut input_chunk = (&mut body).take(1_048_576);
-                        use std::io::Read;
+                        use std::io::Read; //import trait
                         let mut input_chunk = (&mut body).take(1_048_576);
                         match std::io::copy(&mut input_chunk, &mut file) {
                             Ok(0) => {
@@ -518,41 +500,23 @@ fn download_internal(
             }
             break 'download;
         }
+/*         // change the datetime of the file
+        if let Err(err) = filetime::set_file_mtime(&temp_local_path, modified){
+            let string_to_print = format!("Error: {} {} {err}",temp_local_path.to_string_lossy(), modified.unix_seconds());
+            println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
+        } */
+
         // move the completed download file to his final folder
-        // the classic std::fs::rename returns IoError: Invalid cross-device link (os error 18), because it cannot
-        // move files from container to mounts in other operating systems.
-        // I have to use std::io::copy with code and then delete.
-        {
-            let mut reader = std::fs::File::open(&temp_local_path)?;
-            let mut writer = std::fs::File::create(&local_path)?;
-            std::io::copy(&mut reader, &mut writer)?;
-            std::fs::remove_file(&temp_local_path)?;
-        }
+        std::fs::rename(&temp_local_path,local_path)?;
     }
-    // cannot change the LastWrite/modified time from the container in WSL to external exFAT on Windows
-    // I will instead write a Powershell script to run manually after the program.
+    // Cannot change the LastWrite/modified time from the Linux container in WSL to external exFAT on Windows.
+    // I will instead cross-compile to Windows and run the exe in Windows where it works much better with the external exFAT drive.
     // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
-    let mut ps_command = String::new();
-    match filetime::set_file_times(&local_path, modified, modified) {
-        Ok(()) => (),
-        Err(_) => {
-            if local_path.to_string_lossy().starts_with("/mnt/") {
-                let win_path = local_path.to_string_lossy().trim_start_matches("/mnt/").to_string();
-                // replace only the first / with :/
-                let win_path = win_path.replacen("/", ":/", 1);
-                // replace all / with \
-                let win_path = win_path.replace("/", r#"\"#);
-                ps_command = format!(r#"Set-ItemProperty -Path "{win_path}" -Name LastWriteTime -Value {}"#, modified_str);
-            }
-        }
-    }
     // I use the channel files_append_tx to send messages from many threads to just one receiver.
     // That receiver can append to files without worrying of other threads interfering.
-    // So only a single thread can write to a file. That is then sure to be serial and never in simultaneously (data race).
-    // I send 2 strings for 2 files: file_list_just_downloaded and file_powershell_script_change_modified_datetime
-    // Both of them can be empty. That will not be appended to the file.
+    // So only a single thread can write to a file. That is then sure to be serial and never simultaneously (data race).
 
-    files_append_tx.send((just_downloaded, ps_command)).expect("Bug: mpsc send");
+    files_append_tx.send(just_downloaded).expect("Bug: mpsc send");
 
     Ok(())
 }

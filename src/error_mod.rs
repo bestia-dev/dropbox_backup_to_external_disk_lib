@@ -21,9 +21,6 @@ pub enum LibError {
     #[error("SerdeJsonError: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
 
-    #[error("DecryptionError: {0}")]
-    DecryptionError(#[from] fernet::DecryptionError),
-
     #[error("FromUtf8Error: {0}")]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
 
