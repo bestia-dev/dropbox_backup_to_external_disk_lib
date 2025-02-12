@@ -8,11 +8,10 @@
 ***version: 2.1.110 date: 2024-09-24 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
 
  ![dropbox](https://img.shields.io/badge/dropbox-orange)
-
-[//]: # (auto_cargo_toml_to_md end)
-
  ![maintained](https://img.shields.io/badge/maintained-green)
  ![work_in_progress](https://img.shields.io/badge/work_in_progress-yellow)
+ 
+[//]: # (auto_cargo_toml_to_md end)
 
 [//]: # (auto_lines_of_code start)
 [![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1506-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
