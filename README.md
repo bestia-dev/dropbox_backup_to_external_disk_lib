@@ -56,8 +56,8 @@ This is just a library project. There are projects for different user-interfaces
 
 Then I use WSL2 (Debian) on Win10 to execute the compiled program.  
 The external disk path from WSL2 looks like this: `/mnt/d/DropBoxBackup1`.  
-The CLI saves the list of the local files metadata in `temp_data/list_destination_files.csv`.  
-And the list of the files metadata from the remote Dropbox to in `temp_data/list_source_files.csv`.
+The CLI saves the list of the local files metadata in `tmp/temp_data/list_destination_files.csv`.  
+And the list of the files metadata from the remote Dropbox to in `tmp/temp_data/list_source_files.csv`.
 Tab delimited with metadata: path (with name), datetime modified, size.
 The remote path is not really case-sensitive. They try to make it case-preserve, but this apply only to the last part of the path. Before that it is random-case.
 For big dropbox remotes it can take a while to complete. After the first level folders are listed, I use 3 threads in a ThreadPool to get sub-folders recursively in parallel. It makes it much faster. Also the download of files is in parallel on multiple threads.  
