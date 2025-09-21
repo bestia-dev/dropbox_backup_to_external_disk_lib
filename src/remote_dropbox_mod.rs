@@ -164,7 +164,7 @@ pub fn list_remote_folder(
                                 println_to_ui_thread_with_thread_name(&ui_tx, format!("File: {}", crate::shorten_string(&file_path, 80)), &format!("R{thread_num}"));
                                 last_send_ms = std::time::Instant::now();
                             }
-                            file_list.push(format!("{}\t{}\t{}", file_path, entry.client_modified, entry.size));
+                            file_list.push(format!("{}\t{}\t{}\t{}", file_path, entry.client_modified, entry.size, entry.content_hash.unwrap()));
                         }
                     }
                     Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {

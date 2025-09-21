@@ -1,20 +1,25 @@
 // compare_mod.rs
 
-use std::path::Path;
+use std::{path::{Path, PathBuf}, str::FromStr};
 
 use crate::{utils_mod::println_to_ui_thread, FileTxt, LibError};
 use chrono::{DateTime, Utc};
+#[allow(unused_imports)]
+use dropbox_content_hasher::DropboxContentHasher;
 use uncased::UncasedStr;
 
 /// compare list: the lists and produce list_for_download, list_for_trash_files
 pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<(), LibError> {
     //add_just_downloaded_to_list_local(app_config);
+    let base_path = FileTxt::open_for_read(app_config.path_list_ext_disk_base_path)?.read_to_string()?;
+let base_path = PathBuf::from_str(&base_path).unwrap();
     compare_lists_internal(
         ui_tx,
         app_config.path_list_source_files,
         app_config.path_list_destination_files,
         app_config.path_list_for_download,
         app_config.path_list_for_trash_files,
+        &base_path,
     )?;
     Ok(())
 }
@@ -26,16 +31,23 @@ fn compare_lists_internal(
     path_list_destination_files: &Path,
     path_list_for_download: &Path,
     path_list_for_trash: &Path,
+    base_path: &Path,
 ) -> Result<(), LibError> {
     let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
     let vec_list_source_files: Vec<&str> = string_list_source_files.lines().collect();
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_source_files.file_name(), vec_list_source_files.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_source_files.file_name(), vec_list_source_files.len()),
+    );
 
     let file_list_destination_files = FileTxt::open_for_read(path_list_destination_files)?;
     let string_list_destination_files = file_list_destination_files.read_to_string()?;
     let vec_list_destination_files: Vec<&str> = string_list_destination_files.lines().collect();
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_destination_files.file_name(), vec_list_destination_files.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_destination_files.file_name(), vec_list_destination_files.len()),
+    );
 
     let mut vec_for_download: Vec<String> = vec![];
     let mut vec_for_trash: Vec<String> = vec![];
@@ -44,7 +56,7 @@ fn compare_lists_internal(
     //avoid making new allocations or shadowing inside a loop
     let mut vec_line_destination: Vec<&str> = vec![];
     let mut vec_line_source: Vec<&str> = vec![];
-    //let mut i = 0;
+    let mut i = 0;
     loop {
         vec_line_destination.truncate(3);
         vec_line_source.truncate(3);
@@ -61,7 +73,7 @@ fn compare_lists_internal(
             cursor_source += 1;
         } else {
             //compare the 2 lines
-            // /Video_Backup/DVDs/BikeManual/om/FOXHelp/jap/float_x.htm	2007-01-08T19:31:44Z	45889
+            // /Video_Backup/DVDs/BikeManual/om/FOXHelp/jap/float_x.htm	2007-01-08T19:31:44Z	45889   content_hash
             vec_line_source = vec_list_source_files[cursor_source].split("\t").collect();
             vec_line_destination = vec_list_destination_files[cursor_destination].split("\t").collect();
             // UncasedStr preserves the case in the string, but comparison is done case insensitive
@@ -74,15 +86,48 @@ fn compare_lists_internal(
             } else if path_source.gt(path_destination) {
                 vec_for_trash.push(vec_list_destination_files[cursor_destination].to_string());
                 cursor_destination += 1;
+            } else if vec_line_source[2] != vec_line_destination[2] {
+                // equal names, different size
+                vec_for_download.push(vec_list_source_files[cursor_source].to_string());
+                cursor_destination += 1;
+                cursor_source += 1;
             } else {
-                // equal names! check date and size
+                // equal names, check date and later check content_hash
+                let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1])
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                let destination_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_destination[1])
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                // if date is more than 2 seconds different
                 // incredible, incredible, incredible. exFAT is a Microsoft disk format for external disks. It allows for 10ms resolution for LastWrite/modified datetime.
                 // But Microsoft in Win10 driver for exFAT uses only 2seconds resolution. Crazy! After 20 years of existence.
                 // this means that if the time difference is less then 2 seconds, they are probably the same file
-                let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1]).expect("Bug: datetime must be correct").into();
-                let destination_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_destination[1]).expect("Bug: datetime must be correct").into();
-                if vec_line_source[2] != vec_line_destination[2] || chrono::Duration::from(source_modified_dt_utc - destination_modified_dt_utc).abs() > chrono::Duration::seconds(2) {
-                    vec_for_download.push(vec_list_source_files[cursor_source].to_string());
+                if chrono::Duration::from(source_modified_dt_utc - destination_modified_dt_utc).abs() > chrono::Duration::seconds(2) {
+                    // 2025-09-21 another strange behavior: for some git object files the modified date is different on my local disk and on DropBox
+                    // I don't know why is that, but I have 5000 of these files small and large. I suppose the content is equal therefor DropBox does not sync them.
+                    // /BestiaDev/github_backup_active/github_backup_private/obsidian_bestia_dev/.git/objects/1f/55b1a1662d4c06e1909f73877513bf38cc390e
+                    // I can recognize them id the path contains '/.git/'
+                    // I will use content_hash to be sure that these files are equal.
+                    // TODO: cannot use join, because windows has different paths than Linux, slash and backslash nightmare
+                    // but inside git-bash the normal slash should work. Only when running a command, but later it is all windows.
+                    let path_global_to_destination_file = format!("{}{}", base_path.to_string_lossy(), vec_line_destination[0].replace(r#"/"#, r#"\"#));
+                    let path_global_to_destination_file = PathBuf::from_str(&path_global_to_destination_file).unwrap();
+                    // get content_hash from destination file
+                    let local_content_hash = format!("{:x}", DropboxContentHasher::hash_file(&path_global_to_destination_file).unwrap());
+                    if i>40{
+                        i=0;
+                        print!(".");
+                        // flush
+                        use std::io::Write;
+                        std::io::stdout().flush().unwrap();
+                    }
+                    i+=1;
+
+                    if local_content_hash != vec_line_source[3] {
+                        // println!("{} {}", local_content_hash, vec_line_source[3]);
+                        vec_for_download.push(vec_list_source_files[cursor_source].to_string());
+                    }
                 }
                 // else the metadata is the same, no action
                 cursor_destination += 1;
@@ -90,13 +135,20 @@ fn compare_lists_internal(
             }
         }
     }
+    println!();
     let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_downloads.file_name(), vec_for_download.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_for_downloads.file_name(), vec_for_download.len()),
+    );
     let string_for_download = vec_for_download.join("\n");
     file_list_for_downloads.write_append_str(&string_for_download)?;
 
     let mut file_list_for_trash_files = FileTxt::open_for_read_and_write(path_list_for_trash)?;
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash_files.file_name(), vec_for_trash.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_for_trash_files.file_name(), vec_for_trash.len()),
+    );
     let string_for_trash_files = vec_for_trash.join("\n");
     file_list_for_trash_files.write_append_str(&string_for_trash_files)?;
 
@@ -152,10 +204,16 @@ pub fn compare_folders(
             }
         }
     }
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_trash_folders.file_name(), vec_for_trash.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_for_trash_folders.file_name(), vec_for_trash.len()),
+    );
     let string_for_trash_files = vec_for_trash.join("\n");
     file_list_for_trash_folders.write_append_str(&string_for_trash_files)?;
-    println_to_ui_thread(&ui_tx, format!("{}: {}", file_list_for_create_folders.file_name(), vec_for_create.len()));
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_for_create_folders.file_name(), vec_for_create.len()),
+    );
     let string_for_create = vec_for_create.join("\n");
     file_list_for_create_folders.write_append_str(&string_for_create)?;
     Ok(())
