@@ -1,18 +1,20 @@
 // compare_mod.rs
 
-use std::{path::{Path, PathBuf}, str::FromStr};
-
-use crate::{utils_mod::println_to_ui_thread, FileTxt, LibError};
+use crate::{utils_mod::println_to_ui_thread, DropboxBackupToExternalDiskError, FileTxt};
 use chrono::{DateTime, Utc};
+use crossplatform_path::CrossPathBuf;
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
 use uncased::UncasedStr;
 
 /// compare list: the lists and produce list_for_download, list_for_trash_files
-pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<(), LibError> {
+pub fn compare_files(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    app_config: &'static crate::AppConfig,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     //add_just_downloaded_to_list_local(app_config);
     let base_path = FileTxt::open_for_read(app_config.path_list_ext_disk_base_path)?.read_to_string()?;
-let base_path = PathBuf::from_str(&base_path).unwrap();
+    let base_path = CrossPathBuf::new(&base_path).unwrap();
     compare_lists_internal(
         ui_tx,
         app_config.path_list_source_files,
@@ -27,12 +29,12 @@ let base_path = PathBuf::from_str(&base_path).unwrap();
 /// compare list: the lists must be already sorted for this to work correctly
 fn compare_lists_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
-    path_list_source_files: &Path,
-    path_list_destination_files: &Path,
-    path_list_for_download: &Path,
-    path_list_for_trash: &Path,
-    base_path: &Path,
-) -> Result<(), LibError> {
+    path_list_source_files: &CrossPathBuf,
+    path_list_destination_files: &CrossPathBuf,
+    path_list_for_download: &CrossPathBuf,
+    path_list_for_trash: &CrossPathBuf,
+    base_path: &CrossPathBuf,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
     let vec_list_source_files: Vec<&str> = string_list_source_files.lines().collect();
@@ -111,18 +113,21 @@ fn compare_lists_internal(
                     // I will use content_hash to be sure that these files are equal.
                     // TODO: cannot use join, because windows has different paths than Linux, slash and backslash nightmare
                     // but inside git-bash the normal slash should work. Only when running a command, but later it is all windows.
-                    let path_global_to_destination_file = format!("{}{}", base_path.to_string_lossy(), vec_line_destination[0].replace(r#"/"#, r#"\"#));
-                    let path_global_to_destination_file = PathBuf::from_str(&path_global_to_destination_file).unwrap();
+                    let path_global_to_destination_file = format!("{}{}", base_path, vec_line_destination[0].replace(r#"/"#, r#"\"#));
+                    let path_global_to_destination_file = CrossPathBuf::new(&path_global_to_destination_file).unwrap();
                     // get content_hash from destination file
-                    let local_content_hash = format!("{:x}", DropboxContentHasher::hash_file(&path_global_to_destination_file).unwrap());
-                    if i>40{
-                        i=0;
+                    let local_content_hash = format!(
+                        "{:x}",
+                        DropboxContentHasher::hash_file(path_global_to_destination_file.to_path_buf_current_os()).unwrap()
+                    );
+                    if i > 40 {
+                        i = 0;
                         print!(".");
                         // flush
                         use std::io::Write;
                         std::io::stdout().flush().unwrap();
                     }
-                    i+=1;
+                    i += 1;
 
                     if local_content_hash != vec_line_source[3] {
                         // println!("{} {}", local_content_hash, vec_line_source[3]);
@@ -163,7 +168,7 @@ pub fn compare_folders(
     string_list_destination_folders: &str,
     file_list_for_trash_folders: &mut FileTxt,
     file_list_for_create_folders: &mut FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let vec_list_source_folders: Vec<&str> = string_list_source_folders.lines().collect();
     let vec_list_destination_folders: Vec<&str> = string_list_destination_folders.lines().collect();
 

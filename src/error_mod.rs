@@ -8,7 +8,7 @@
 
 /// list of possible errors from this library
 #[derive(thiserror::Error, Debug)]
-pub enum LibError {
+pub enum DropboxBackupToExternalDiskError {
     #[error("VarError: {0}")]
     VarError(#[from] std::env::VarError),
 
@@ -37,6 +37,9 @@ pub enum LibError {
 
     #[error("TimestampError: {0}")]
     TimestampError(#[from] humantime::TimestampError),
+
+    #[error("CrossPlatformPathError: {0}")]
+    CrossPlatformPathError(#[from] crossplatform_path::LibraryError),
 
     #[error("ErrorFromString: {0}")]
     ErrorFromString(String),

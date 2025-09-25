@@ -13,7 +13,7 @@ mod utils_mod;
 // export public code to the bin project
 pub use crate::app_state_mod::{global_app_state, global_config, AppConfig, AppStateMethods, APP_STATE};
 pub use crate::compare_mod::{compare_files, compare_folders};
-pub use crate::error_mod::LibError;
+pub use crate::error_mod::DropboxBackupToExternalDiskError;
 pub use crate::file_txt_mod::FileTxt;
 pub use crate::local_disk_mod::{create_folders, list_local, move_or_rename_local_files, read_only_remove, trash_files, trash_folders};
 pub use crate::remote_dropbox_mod::{download_from_list, download_one_file, encode_token, list_remote, test_connection};

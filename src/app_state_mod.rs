@@ -1,22 +1,22 @@
 // app_state_mod.rs
 
-use std::path::Path;
+use crossplatform_path::CrossPathBuf;
 
-use crate::error_mod::LibError;
+use crate::error_mod::DropboxBackupToExternalDiskError;
 
 #[derive(Debug)]
 pub struct AppConfig {
-    pub path_list_ext_disk_base_path: &'static Path,
-    pub path_list_source_files: &'static Path,
-    pub path_list_destination_files: &'static Path,
-    pub path_list_source_folders: &'static Path,
-    pub path_list_destination_folders: &'static Path,
-    pub path_list_destination_readonly_files: &'static Path,
-    pub path_list_for_download: &'static Path,
-    pub path_list_for_trash_files: &'static Path,
-    pub path_list_just_downloaded: &'static Path,
-    pub path_list_for_trash_folders: &'static Path,
-    pub path_list_for_create_folders: &'static Path,
+    pub path_list_ext_disk_base_path: &'static CrossPathBuf,
+    pub path_list_source_files: &'static CrossPathBuf,
+    pub path_list_destination_files: &'static CrossPathBuf,
+    pub path_list_source_folders: &'static CrossPathBuf,
+    pub path_list_destination_folders: &'static CrossPathBuf,
+    pub path_list_destination_readonly_files: &'static CrossPathBuf,
+    pub path_list_for_download: &'static CrossPathBuf,
+    pub path_list_for_trash_files: &'static CrossPathBuf,
+    pub path_list_just_downloaded: &'static CrossPathBuf,
+    pub path_list_for_trash_folders: &'static CrossPathBuf,
+    pub path_list_for_create_folders: &'static CrossPathBuf,
 }
 
 /// This trait defines what functions must the bin project implement then the lib project can use them.  
@@ -25,11 +25,11 @@ pub struct AppConfig {
 /// These methods will be available globally.
 pub trait AppStateMethods: Sync + Send {
     /// get encrypted authorization token from env var
-    fn load_keys_from_io(&self) -> Result<(String, String), LibError>;
+    fn load_keys_from_io(&self) -> Result<(String, String), DropboxBackupToExternalDiskError>;
     /// reference to app_config data
     fn ref_app_config(&self) -> &AppConfig;
     /// get locked Mutex
-    fn lock_proba(&self) -> std::sync::MutexGuard<String>;
+    fn lock_proba(&self) -> std::sync::MutexGuard<'_, String>;
 }
 
 /// Global variable to store the Application state.  
@@ -51,6 +51,9 @@ pub fn global_config() -> &'static AppConfig {
     global_app_state().ref_app_config()
 }
 
+// Clippy warning here, but I don't know how to change this.
+// for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#borrowed_box
+#[allow(clippy::borrowed_box)]
 pub fn global_app_state() -> &'static Box<dyn AppStateMethods> {
     APP_STATE.get().expect("Bug: OnceCell must not be empty.")
 }

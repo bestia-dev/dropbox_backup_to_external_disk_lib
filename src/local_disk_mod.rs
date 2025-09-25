@@ -2,8 +2,7 @@
 
 //! Module contains all functions for local external disk.
 
-use std::path::Path;
-
+use crossplatform_path::CrossPathBuf;
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
 
@@ -19,7 +18,7 @@ use unwrap::unwrap; */
 
 use crate::{
     utils_mod::{println_to_ui_thread, println_to_ui_thread_with_thread_name},
-    FileTxt, LibError,
+    DropboxBackupToExternalDiskError, FileTxt,
 };
 
 /// the logic is in the LIB project, but all UI is in the CLI project
@@ -31,7 +30,7 @@ pub fn list_local(
     mut file_list_destination_files: FileTxt,
     mut file_list_destination_folders: FileTxt,
     mut file_list_destination_readonly_files: FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_local_start = std::time::Instant::now();
 
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
@@ -53,21 +52,27 @@ pub fn list_local(
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
-        let str_path = path.to_str().ok_or_else(|| LibError::ErrorFromStr("Error string is not path"))?;
+        let str_path = path
+            .to_str()
+            .ok_or_else(|| DropboxBackupToExternalDiskError::ErrorFromStr("Error string is not path"))?;
         // I don't need the "base" folder in this list
-        let str_path_wo_base =str_path.trim_start_matches(&ext_disk_base_path); 
+        let str_path_wo_base = str_path.trim_start_matches(&ext_disk_base_path);
         // change windows style with backslash to Linux style with slash
-        let str_path_wo_base =str_path_wo_base.replace(r#"\"#, "/");
-        let str_path_wo_base=&str_path_wo_base;
+        let str_path_wo_base = str_path_wo_base.replace(r#"\"#, "/");
+        let str_path_wo_base = &str_path_wo_base;
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
             if !str_path_wo_base.is_empty() {
-                // avoid the temp_trash folder 
-                if !str_path_wo_base.starts_with("/0_backup_temp"){
+                // avoid the temp_trash folder
+                if !str_path_wo_base.starts_with("/0_backup_temp") {
                     folders_string.push_str(&format!("{}\n", str_path_wo_base));
                     // don't print every folder, because print is slow. Check if 100ms passed
                     if last_send_ms.elapsed().as_millis() >= 100 {
-                        println_to_ui_thread_with_thread_name(&ui_tx, format!("{file_count}: {}", crate::shorten_string(str_path_wo_base, 80)), "L");
+                        println_to_ui_thread_with_thread_name(
+                            &ui_tx,
+                            format!("{file_count}: {}", crate::shorten_string(str_path_wo_base, 80)),
+                            "L",
+                        );
 
                         last_send_ms = std::time::Instant::now();
                     }
@@ -78,7 +83,7 @@ pub fn list_local(
             // write csv tab delimited
             // metadata() in wsl/Linux is slow. Nothing to do here.
             if let Ok(metadata) = entry.metadata() {
-                if !str_path_wo_base.starts_with("/0_backup_temp"){
+                if !str_path_wo_base.starts_with("/0_backup_temp") {
                     use chrono::offset::Utc;
                     use chrono::DateTime;
                     let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
@@ -92,7 +97,6 @@ pub fn list_local(
                         datetime.format("%Y-%m-%dT%TZ"),
                         metadata.len()
                     ));
-                
 
                     file_count += 1;
                 }
@@ -118,9 +122,16 @@ pub fn list_local(
 
     println_to_ui_thread_with_thread_name(&ui_tx, format!("Local folder count: {folder_count}"), "L");
     println_to_ui_thread_with_thread_name(&ui_tx, format!("Local file count: {file_count}"), "L");
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local readonly count: {}", readonly_files_string.lines().count()), "L");
-    println_to_ui_thread_with_thread_name(&ui_tx, format!("Local duration in seconds: {}", list_local_start.elapsed().as_secs()), "L");
-
+    println_to_ui_thread_with_thread_name(
+        &ui_tx,
+        format!("Local readonly count: {}", readonly_files_string.lines().count()),
+        "L",
+    );
+    println_to_ui_thread_with_thread_name(
+        &ui_tx,
+        format!("Local duration in seconds: {}", list_local_start.elapsed().as_secs()),
+        "L",
+    );
 
     Ok(())
 }
@@ -129,19 +140,22 @@ pub fn list_local(
 /// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
 pub fn read_only_remove(
     ui_tx: std::sync::mpsc::Sender<String>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &CrossPathBuf,
     file_destination_readonly_files: &mut FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
     for string_path_for_readonly in list_destination_readonly_files.lines() {
-        let path_global_path_to_readonly = ext_disk_base_path.join(string_path_for_readonly.trim_start_matches("/"));
+        let path_global_path_to_readonly = ext_disk_base_path.join_relative(string_path_for_readonly)?;
         // if path does not exist ignore
         if path_global_path_to_readonly.exists() {
-            let mut perms = path_global_path_to_readonly.metadata()?.permissions();
-            if perms.readonly() == true {
+            let mut perms = path_global_path_to_readonly.to_path_buf_current_os().metadata()?.permissions();
+            if perms.readonly() {
+                // note: on Unix platforms this results in the file being world writable
+                // this is ok for backup
+                #[allow(clippy::permissions_set_readonly_false)]
                 perms.set_readonly(false);
-                match std::fs::set_permissions(&path_global_path_to_readonly, perms) {
-                    Ok(_) => println_to_ui_thread(&ui_tx, format!("{string_path_for_readonly}")),
+                match std::fs::set_permissions(path_global_path_to_readonly.to_path_buf_current_os(), perms) {
+                    Ok(_) => println_to_ui_thread(&ui_tx, string_path_for_readonly.to_string()),
                     Err(_err) => println_to_ui_thread(&ui_tx, format!("Error set_permissions readonly: {string_path_for_readonly}")),
                 }
             }
@@ -151,17 +165,21 @@ pub fn read_only_remove(
 }
 
 /// create new empty folders
-pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_create_folders: &mut FileTxt) -> Result<(), LibError> {
+pub fn create_folders(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    file_list_for_create_folders: &mut FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_create_folders = file_list_for_create_folders.read_to_string()?;
     if list_for_create_folders.is_empty() {
-        println_to_ui_thread(&ui_tx, format!("list_for_create_folders is empty"));
+        println_to_ui_thread(&ui_tx, "list_for_create_folders is empty".to_string());
     } else {
         for string_path in list_for_create_folders.lines() {
-            let path_global_path = ext_disk_base_path.join(string_path.trim_start_matches("/"));
+            let path_global_path = ext_disk_base_path.join_relative(string_path)?;
             // if path exists ignore
             if !path_global_path.exists() {
-                println_to_ui_thread(&ui_tx, path_global_path.to_string_lossy().to_string());
-                std::fs::create_dir_all(path_global_path)?;
+                println_to_ui_thread(&ui_tx, path_global_path.to_string());
+                path_global_path.create_dir_all()?;
             }
         }
         file_list_for_create_folders.empty()?;
@@ -177,16 +195,21 @@ pub fn create_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path
 /// Remove also the lines in files list_for_trash_files and list_for_download.
 pub fn move_or_rename_local_files(
     ui_tx: std::sync::mpsc::Sender<String>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_files: &mut FileTxt,
     file_list_for_download: &mut FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_name(ui_tx.clone(), ext_disk_base_path, &mut vec_list_for_trash_files, &mut vec_list_for_download) {
+    match move_or_rename_local_files_internal_by_name(
+        ui_tx.clone(),
+        ext_disk_base_path,
+        &mut vec_list_for_trash_files,
+        &mut vec_list_for_download,
+    ) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk and continue
             file_list_for_trash_files.empty()?;
@@ -232,10 +255,10 @@ pub fn move_or_rename_local_files(
 // internal because of catching errors
 fn move_or_rename_local_files_internal_by_name(
     ui_tx: std::sync::mpsc::Sender<String>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &CrossPathBuf,
     vec_list_for_trash: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
@@ -246,7 +269,7 @@ fn move_or_rename_local_files_internal_by_name(
     for line_for_trash_files in vec_list_for_trash_clone.iter() {
         let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
         let string_path_for_trash_files = vec_line_for_trash[0];
-        let path_global_to_trash_files = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
+        let path_global_to_trash_files = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
         // if path does not exist ignore, probably it eas moved or trashed earlier
         if path_global_to_trash_files.exists() {
             let modified_for_trash_files = vec_line_for_trash[1];
@@ -264,7 +287,7 @@ fn move_or_rename_local_files_internal_by_name(
                 // Every 1 second write a dot, to see it still works like a progress bar
                 if last_send_ms.elapsed().as_millis() >= 1000 {
                     // this is a special character fpr a progress bar
-                    println_to_ui_thread(&ui_tx, format!("."));
+                    println_to_ui_thread(&ui_tx, ".".to_string());
 
                     last_send_ms = std::time::Instant::now();
                 }
@@ -278,9 +301,12 @@ fn move_or_rename_local_files_internal_by_name(
                     .last()
                     .expect("Bug: file_name_for_download must be splitted and not empty")
                     .to_string();
-                let path_global_to_download = ext_disk_base_path.join(string_path_for_download.trim_start_matches("/"));
+                let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
 
-                if modified_for_trash_files == modified_for_download && size_for_trash_files == size_for_download && file_name_for_trash_files == file_name_for_download {
+                if modified_for_trash_files == modified_for_download
+                    && size_for_trash_files == size_for_download
+                    && file_name_for_trash_files == file_name_for_download
+                {
                     move_internal(&ui_tx, &path_global_to_trash_files, &path_global_to_download)?;
                     // remove the lines from the original mut Vec
                     vec_list_for_trash.retain(|line| line != line_for_trash_files);
@@ -300,10 +326,10 @@ fn move_or_rename_local_files_internal_by_name(
 // internal because of catching errors
 fn move_or_rename_local_files_internal_by_hash(
     ui_tx: std::sync::mpsc::Sender<String>,
-    ext_disk_base_path: &Path,
+    ext_disk_base_path: &CrossPathBuf,
     vec_list_for_trash: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
@@ -314,7 +340,7 @@ fn move_or_rename_local_files_internal_by_hash(
     for line_for_trash_files in vec_list_for_trash_clone.iter() {
         let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
         let string_path_for_trash_files = vec_line_for_trash[0];
-        let path_global_to_trash_files = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
+        let path_global_to_trash_files = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
         // if path does not exist ignore, probably it eas moved or trashed earlier
         if path_global_to_trash_files.exists() {
             let modified_for_trash_files = vec_line_for_trash[1];
@@ -324,7 +350,7 @@ fn move_or_rename_local_files_internal_by_hash(
                 // Every 1 second write a dot, to see it still works like a progress bar
                 if last_send_ms.elapsed().as_millis() >= 1000 {
                     // this is a special character fpr a progress bar
-                    println_to_ui_thread(&ui_tx, format!("."));
+                    println_to_ui_thread(&ui_tx, ".".to_string());
 
                     last_send_ms = std::time::Instant::now();
                 }
@@ -332,11 +358,14 @@ fn move_or_rename_local_files_internal_by_hash(
                 let string_path_for_download = vec_line_for_download[0];
                 let modified_for_download = vec_line_for_download[1];
                 let size_for_download = vec_line_for_download[2];
-                let path_global_to_download = ext_disk_base_path.join(string_path_for_download.trim_start_matches("/"));
+                let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
 
                 if modified_for_trash_files == modified_for_download && size_for_trash_files == size_for_download {
                     // same size and date. Let's check the content_hash to be sure.
-                    let local_content_hash = format!("{:x}", DropboxContentHasher::hash_file(&path_global_to_trash_files)?);
+                    let local_content_hash = format!(
+                        "{:x}",
+                        DropboxContentHasher::hash_file(path_global_to_trash_files.to_path_buf_current_os())?
+                    );
                     let remote_content_hash = get_content_hash(string_path_for_download)?;
 
                     if local_content_hash == remote_content_hash {
@@ -357,34 +386,40 @@ fn move_or_rename_local_files_internal_by_hash(
 }
 
 /// internal code to move file
-fn move_internal(ui_tx: &std::sync::mpsc::Sender<String>, path_global_to_trash: &Path, path_global_for_download: &Path) -> Result<(), LibError> {
+fn move_internal(
+    ui_tx: &std::sync::mpsc::Sender<String>,
+    path_global_to_trash: &CrossPathBuf,
+    path_global_for_download: &CrossPathBuf,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let move_from = path_global_to_trash;
     let move_to = path_global_for_download;
-    println_to_ui_thread(&ui_tx, format!("move {}  ->  {}", &move_from.to_string_lossy(), &move_to.to_string_lossy()));
-
-    let parent = Path::parent(Path::new(&move_to)).expect("Bug: Parent path must exist.");
-    if !parent.exists() {
-        std::fs::create_dir_all(&parent)?;
-    }
-    if Path::new(&move_to).exists() {
-        let mut perms = std::fs::metadata(&move_to)?.permissions();
-        if perms.readonly() == true {
+    println_to_ui_thread(ui_tx, format!("move {}  ->  {}", &move_from, &move_to));
+    move_to.create_dir_all_for_file()?;
+    if move_to.exists() {
+        let mut perms = std::fs::metadata(move_to.to_path_buf_current_os())?.permissions();
+        if perms.readonly() {
+            // note: on Unix platforms this results in the file being world writable
+            // this is ok for backup
+            #[allow(clippy::permissions_set_readonly_false)]
             perms.set_readonly(false);
-            std::fs::set_permissions(&move_to, perms)?;
+            std::fs::set_permissions(move_to.to_path_buf_current_os(), perms)?;
         }
     }
-    if Path::new(&move_from).exists() {
-        let mut perms = std::fs::metadata(&move_from)?.permissions();
-        if perms.readonly() == true {
+    if move_from.exists() {
+        let mut perms = std::fs::metadata(move_from.to_path_buf_current_os())?.permissions();
+        if perms.readonly() {
+            // note: on Unix platforms this results in the file being world writable
+            // this is ok for backup
+            #[allow(clippy::permissions_set_readonly_false)]
             perms.set_readonly(false);
-            std::fs::set_permissions(&move_from, perms)?;
+            std::fs::set_permissions(move_from.to_path_buf_current_os(), perms)?;
         }
     }
-    std::fs::rename(&move_from, &move_to)?;
+    std::fs::rename(move_from.to_path_buf_current_os(), move_to.to_path_buf_current_os())?;
     Ok(())
 }
 
-fn get_content_hash(path_for_download: &str) -> Result<String, LibError> {
+fn get_content_hash(path_for_download: &str) -> Result<String, DropboxBackupToExternalDiskError> {
     let token = crate::remote_dropbox_mod::get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     Ok(crate::remote_dropbox_mod::remote_content_hash(path_for_download, &client).expect("Bug: dropbox metadata must have hash."))
@@ -392,7 +427,11 @@ fn get_content_hash(path_for_download: &str) -> Result<String, LibError> {
 
 /// Move to trash folder the files from list_for_trash_files.
 /// Ignore if the file does not exist anymore.
-pub fn trash_files(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash_files: &mut FileTxt) -> Result<(), LibError> {
+pub fn trash_files(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    file_list_for_trash_files: &mut FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
 
@@ -413,28 +452,27 @@ pub fn trash_files(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &
 }
 
 /// internal
-fn trash_files_internal(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, vec_list_for_trash_files: &mut Vec<&str>) -> Result<(), LibError> {
+fn trash_files_internal(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    vec_list_for_trash_files: &mut Vec<&str>,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
     let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
     // the trash folder will be inside DropBoxBackup because of permissions
-    let base_trash_path = ext_disk_base_path.join("0_backup_temp").join(&now_string);
-    if !base_trash_path.exists() {
-        std::fs::create_dir_all(&base_trash_path)?;
-    }
+    let base_trash_path = ext_disk_base_path.join_relative("0_backup_temp")?.join_relative(&now_string)?;
+    base_trash_path.create_dir_all()?;
     //move the files in the same directory structure
     for line_path_for_trash_files in vec_list_for_trash_clone.iter() {
         let line: Vec<&str> = line_path_for_trash_files.split("\t").collect();
         let string_path_for_trash_files = line[0];
-        let path_move_from = ext_disk_base_path.join(string_path_for_trash_files.trim_start_matches("/"));
+        let path_move_from = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
         // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move to trash before.
         if path_move_from.exists() {
-            let path_move_to = base_trash_path.join(string_path_for_trash_files.trim_start_matches("/"));
-            println_to_ui_thread(&ui_tx, format!("{}", path_move_from.to_string_lossy()));
-            let parent = path_move_to.parent().expect("Bug: parent must exist");
-            if !parent.exists() {
-                std::fs::create_dir_all(&parent).unwrap();
-            }
-            std::fs::rename(&path_move_from, &path_move_to)?;
+            let path_move_to = base_trash_path.join_relative(string_path_for_trash_files)?;
+            println_to_ui_thread(&ui_tx, format!("{}", path_move_from));
+            path_move_to.create_dir_all_for_file()?;
+            std::fs::rename(path_move_from.to_path_buf_current_os(), path_move_to.to_path_buf_current_os())?;
         }
         vec_list_for_trash_files.retain(|line| line != line_path_for_trash_files);
     }
@@ -442,26 +480,25 @@ fn trash_files_internal(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_pa
 }
 
 /// Move to trash folder the folders from list_for_trash_folders.
-pub fn trash_folders(ui_tx: std::sync::mpsc::Sender<String>, ext_disk_base_path: &Path, file_list_for_trash_folders: &mut FileTxt) -> Result<(), LibError> {
+pub fn trash_folders(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    file_list_for_trash_folders: &mut FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_trash_folders = file_list_for_trash_folders.read_to_string()?;
     let mut vec_list_for_trash_folders: Vec<&str> = list_for_trash_folders.lines().collect();
     let vec_list_for_trash_clone = vec_list_for_trash_folders.clone();
     let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
-    let base_trash_path_folders = ext_disk_base_path.join("0_backup_temp").join(&now_string);
-    if !base_trash_path_folders.exists() {
-        std::fs::create_dir_all(&base_trash_path_folders).unwrap();
-    }
+    let base_trash_path_folders = ext_disk_base_path.join_relative("0_backup_temp")?.join_relative(&now_string)?;
+    base_trash_path_folders.create_dir_all()?;
     for string_path_for_trash_folders in vec_list_for_trash_clone.iter() {
-        let path_move_from = ext_disk_base_path.join(string_path_for_trash_folders.trim_start_matches("/"));
+        let path_move_from = ext_disk_base_path.join_relative(string_path_for_trash_folders)?;
         // move to trash if file exists. Nothing if it does not exist, maybe is deleted when moved or in a move to trash before.
         if path_move_from.exists() {
-            let path_move_to = base_trash_path_folders.join(string_path_for_trash_folders.trim_start_matches("/"));
-            println_to_ui_thread(&ui_tx, format!("{}", path_move_from.to_string_lossy()));
-            let parent = path_move_to.parent().expect("Bug: parent must exist");
-            if !parent.exists() {
-                std::fs::create_dir_all(&parent)?;
-            }
-            std::fs::rename(&path_move_from, &path_move_to)?;
+            let path_move_to = base_trash_path_folders.join_relative(string_path_for_trash_folders)?;
+            println_to_ui_thread(&ui_tx, format!("{}", path_move_from));
+            path_move_to.create_dir_all_for_file()?;
+            std::fs::rename(path_move_from.to_path_buf_current_os(), path_move_to.to_path_buf_current_os())?;
         }
         vec_list_for_trash_folders.retain(|line| line != string_path_for_trash_folders);
     }

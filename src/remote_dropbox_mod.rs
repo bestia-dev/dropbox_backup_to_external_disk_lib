@@ -4,8 +4,10 @@
 //! It uses inter-thread channels to send text to the UserInterface thread.
 //! It uses LibError to return error text to the UI thread.
 
+use crossplatform_path::CrossPathBuf;
+
 use crate::app_state_mod::APP_STATE;
-use crate::error_mod::LibError;
+use crate::error_mod::DropboxBackupToExternalDiskError;
 use crate::utils_mod::println_to_ui_thread_with_thread_name;
 use crate::FileTxt;
 
@@ -22,7 +24,7 @@ type TokenEnc = String;
 /// This is a short-lived token, so security is not my primary concern.
 /// But it is bad practice to store anything as plain text. I will encode it and store it in env var.
 /// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
-pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), LibError> {
+pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), DropboxBackupToExternalDiskError> {
     // every time, the master key will be random and temporary
     // TODO: fernet is using OpenSSL and that cannot be cross-compile to windows
     // TODO: use some other method of encryption. For now no encryption at all.
@@ -34,7 +36,7 @@ pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), LibError> {
 
 /// test authentication with dropbox.com
 /// experiment with sending function pointer
-pub fn test_connection() -> Result<(), LibError> {
+pub fn test_connection() -> Result<(), DropboxBackupToExternalDiskError> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     (dropbox_sdk::files::list_folder(&client, &dropbox_sdk::files::ListFolderArg::new("".to_string()))?)?;
@@ -42,19 +44,25 @@ pub fn test_connection() -> Result<(), LibError> {
 }
 
 /// read encoded token (from env), decode and return the authorization token
-pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, LibError> {
+pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, DropboxBackupToExternalDiskError> {
     // the global APP_STATE method reads encoded tokens from env var
     let (_master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
     // TODO: decrypt with fernet was using OpenSSL, that cannot be cross-compiled. Use some other encryption method.
     // TODO: for now just don't encrypt
     let token = token_enc;
     // return
+    // from_long_lived_access_token() is deprecated, but it still works, just it does not live long.
+    // TODO: change to OAuth2
     Ok(dropbox_sdk::oauth2::Authorization::from_long_lived_access_token(token))
 }
 
 /// get remote list in parallel
 /// first get the first level of folders and then request in parallel sub-folders recursively
-pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut file_list_source_files: FileTxt, mut file_list_source_folders: FileTxt) -> Result<(), LibError> {
+pub fn list_remote(
+    ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
+    mut file_list_source_files: FileTxt,
+    mut file_list_source_folders: FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_remote_start = std::time::Instant::now();
     // empty the files. I want all or nothing result here if the process is terminated prematurely.
     file_list_source_files.empty()?;
@@ -67,7 +75,10 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
     let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx.clone())?;
 
     // threadpool with 8 threads
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().expect("Bug: rayon ThreadPoolBuilder");
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(8)
+        .build()
+        .expect("Bug: rayon ThreadPoolBuilder");
     pool.scope({
         // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
         let mut folder_list_all = vec![];
@@ -94,8 +105,14 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
                         // catch propagated errors and communicate errors to user or developer
                         // spawned closure cannot propagate error with ?
                         match list_remote_folder(client_ref, &folder_path, thread_num, true, ui_tx_move_to_closure) {
-                            Ok(folder_list_and_file_list) => list_tx_move_to_closure.send(folder_list_and_file_list).expect("Bug: mpsc send"),
-                            Err(err) => println_to_ui_thread_with_thread_name(&ui_tx_move_to_closure_2, format!("Error in thread {err}"), &format!("R{thread_num}")),
+                            Ok(folder_list_and_file_list) => {
+                                list_tx_move_to_closure.send(folder_list_and_file_list).expect("Bug: mpsc send")
+                            }
+                            Err(err) => println_to_ui_thread_with_thread_name(
+                                &ui_tx_move_to_closure_2,
+                                format!("Error in thread {err}"),
+                                &format!("R{thread_num}"),
+                            ),
                         }
                     }
                 });
@@ -114,13 +131,21 @@ pub fn list_remote(ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>, mut fil
 
             println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote folder count: {all_folder_count}"), "R");
             let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
-            file_list_source_folders.write_append_str(&string_folder_list).expect("Bug: file_list_source_folders must be writable");
+            file_list_source_folders
+                .write_append_str(&string_folder_list)
+                .expect("Bug: file_list_source_folders must be writable");
 
             println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count: {all_file_count}"), "R");
             let string_file_list = crate::utils_mod::sort_list(file_list_all);
-            file_list_source_files.write_append_str(&string_file_list).expect("Bug: file_list_source_files must be writable");
+            file_list_source_files
+                .write_append_str(&string_file_list)
+                .expect("Bug: file_list_source_files must be writable");
 
-            println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote duration in seconds: {}", list_remote_start.elapsed().as_secs()), "R");
+            println_to_ui_thread_with_thread_name(
+                &ui_tx,
+                format!("Remote duration in seconds: {}", list_remote_start.elapsed().as_secs()),
+                "R",
+            );
         }
     });
 
@@ -134,7 +159,7 @@ pub fn list_remote_folder(
     thread_num: ThreadNum,
     recursive: bool,
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-) -> Result<FolderListAndFileList, LibError> {
+) -> Result<FolderListAndFileList, DropboxBackupToExternalDiskError> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
     let mut last_send_ms = std::time::Instant::now();
@@ -148,7 +173,11 @@ pub fn list_remote_folder(
                         let folder_path = entry.path_display.unwrap_or(entry.name);
                         // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                         if last_send_ms.elapsed().as_millis() >= 100 {
-                            println_to_ui_thread_with_thread_name(&ui_tx, format!("Folder: {}", crate::shorten_string(&folder_path, 80)), &format!("R{thread_num}"));
+                            println_to_ui_thread_with_thread_name(
+                                &ui_tx,
+                                format!("Folder: {}", crate::shorten_string(&folder_path, 80)),
+                                &format!("R{thread_num}"),
+                            );
                             last_send_ms = std::time::Instant::now();
                         }
                         folder_list.push(folder_path);
@@ -161,28 +190,48 @@ pub fn list_remote_folder(
                         if !file_path.ends_with("com.dropbox.attrs") {
                             // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                             if last_send_ms.elapsed().as_millis() >= 100 {
-                                println_to_ui_thread_with_thread_name(&ui_tx, format!("File: {}", crate::shorten_string(&file_path, 80)), &format!("R{thread_num}"));
+                                println_to_ui_thread_with_thread_name(
+                                    &ui_tx,
+                                    format!("File: {}", crate::shorten_string(&file_path, 80)),
+                                    &format!("R{thread_num}"),
+                                );
                                 last_send_ms = std::time::Instant::now();
                             }
-                            file_list.push(format!("{}\t{}\t{}\t{}", file_path, entry.client_modified, entry.size, entry.content_hash.unwrap()));
+                            file_list.push(format!(
+                                "{}\t{}\t{}\t{}",
+                                file_path,
+                                entry.client_modified,
+                                entry.size,
+                                entry.content_hash.unwrap()
+                            ));
                         }
                     }
                     Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
-                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error unexpected deleted entry")));
+                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+                            "R{thread_num} Error unexpected deleted entry"
+                        )));
                     }
                     Ok(Err(e)) => {
-                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error from files/list_folder_continue: {e}")));
+                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+                            "R{thread_num} Error from files/list_folder_continue: {e}"
+                        )));
                     }
                     Err(e) => {
-                        return Err(LibError::ErrorFromString(format!("R{thread_num} Error API request: {e}")));
+                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+                            "R{thread_num} Error API request: {e}"
+                        )));
                     }
                 }
             }
             // return FolderListAndFileList
             Ok((folder_list, file_list))
         }
-        Ok(Err(e)) => Err(LibError::ErrorFromString(format!("R{thread_num} Error from files/list_folder: {e}"))),
-        Err(e) => Err(LibError::ErrorFromString(format!("R{thread_num} Error API request: {e}"))),
+        Ok(Err(e)) => Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+            "R{thread_num} Error from files/list_folder: {e}"
+        ))),
+        Err(e) => Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+            "R{thread_num} Error API request: {e}"
+        ))),
     }
 }
 
@@ -258,22 +307,16 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
     let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
 
     match res_res_metadata {
-        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => {
-            return None;
-        }
-        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
-            return Some(entry.content_hash.expect("Bug: dropbox metadata must have hash."));
-        }
-        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
-            return None;
-        }
+        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => None,
+        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => Some(entry.content_hash.expect("Bug: dropbox metadata must have hash.")),
+        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => None,
         Ok(Err(e)) => {
             println!("Error get metadata: {}", e);
-            return None;
+            None
         }
         Err(e) => {
             println!("API request error: {}", e);
-            return None;
+            None
         }
     }
 }
@@ -282,18 +325,13 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
 /// This is used just for debugging. For real the user will run download_from_list.
 pub fn download_one_file(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &std::path::Path,
-    path_to_download: &std::path::Path,
+    ext_disk_base_path: &CrossPathBuf,
+    path_to_download: &CrossPathBuf,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), LibError> {
-    let path_str = path_to_download.to_string_lossy().to_string();
+) -> Result<(), DropboxBackupToExternalDiskError> {
+    let path_str = path_to_download.to_string();
     let mut vec_list_for_download: Vec<&str> = vec![&path_str];
-    download_from_vec(
-        ui_tx,
-        ext_disk_base_path,
-        &mut vec_list_for_download,
-        file_list_just_downloaded,
-    )?;
+    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_list_just_downloaded)?;
 
     Ok(())
 }
@@ -302,10 +340,10 @@ pub fn download_one_file(
 /// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
 pub fn download_from_list(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &std::path::Path,
+    ext_disk_base_path: &CrossPathBuf,
     file_list_for_download: &mut FileTxt,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
@@ -322,22 +360,17 @@ pub fn download_from_list(
         file_list_just_downloaded.empty()?;
     }
 
-    download_from_vec(
-        ui_tx,
-        ext_disk_base_path,
-        &mut vec_list_for_download,
-        file_list_just_downloaded,
-    )?;
+    download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_list_just_downloaded)?;
 
     Ok(())
 }
 
 fn download_from_vec(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &std::path::Path,
+    ext_disk_base_path: &CrossPathBuf,
     vec_list_for_download: &mut Vec<&str>,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     // I have to create a reference before the move-closure. So the reference is moved to the closure and not the object.
@@ -352,7 +385,7 @@ fn download_from_vec(
             scoped.spawn({
                 // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
                 let line: Vec<&str> = line_path_to_download.split("\t").collect();
-                let path_to_download = line[0];
+                let path_to_download = CrossPathBuf::new(line[0]).expect("Error handling inside closures is not good.");
                 let ui_tx_clone = ui_tx.clone();
                 let ui_tx_move_to_closure_2 = ui_tx.clone();
                 let files_append_tx_move_to_closure = files_append_tx.clone();
@@ -366,11 +399,15 @@ fn download_from_vec(
                         ext_disk_base_path,
                         client_ref,
                         thread_num as i32,
-                        std::path::Path::new(path_to_download),
+                        &path_to_download,
                         files_append_tx_move_to_closure,
                     ) {
                         Ok(()) => {}
-                        Err(err) => println_to_ui_thread_with_thread_name(&ui_tx_move_to_closure_2, format!("Error in thread {err}"), &format!("R{thread_num}")),
+                        Err(err) => println_to_ui_thread_with_thread_name(
+                            &ui_tx_move_to_closure_2,
+                            format!("Error in thread {err}"),
+                            &format!("R{thread_num}"),
+                        ),
                     }
                 }
             });
@@ -387,7 +424,6 @@ fn download_from_vec(
             }
         }
         // endregion: Receiver reads all msgs from the queue
-
     });
 
     Ok(())
@@ -396,25 +432,21 @@ fn download_from_vec(
 /// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
 fn download_internal(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-    ext_disk_base_path: &std::path::Path,
+    ext_disk_base_path: &CrossPathBuf,
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     thread_num: i32,
-    path_to_download: &std::path::Path,
+    path_to_download: &CrossPathBuf,
     files_append_tx: std::sync::mpsc::Sender<String>,
-) -> Result<(), LibError> {
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let thread_name = format!("R{thread_num}");
-    let local_path = ext_disk_base_path.join(path_to_download.to_string_lossy().trim_start_matches("/"));
-    // create folder if it does not exist
-    let parent = local_path.parent().expect("Bug: Parent must exist.");
-    if !parent.exists() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let local_path = ext_disk_base_path.join_relative(path_to_download.as_str())?;
+    local_path.create_dir_all_for_file()?;
     let modified_str;
     let metadata_size;
     let mut just_downloaded = String::new();
 
     // get datetime from remote
-    let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string_lossy().to_string());
+    let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string());
     let metadata = (dropbox_sdk::files::get_metadata(client, &get_metadata_arg)?)?;
     match metadata {
         dropbox_sdk::files::Metadata::File(metadata) => {
@@ -422,7 +454,7 @@ fn download_internal(
             metadata_size = metadata.size;
         }
         _ => {
-            return Err(LibError::ErrorFromStr("This is not a file on Dropbox"));
+            return Err(DropboxBackupToExternalDiskError::ErrorFromStr("This is not a file on Dropbox"));
         }
     }
 
@@ -432,20 +464,22 @@ fn download_internal(
     // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
     if metadata_size == 0 {
         if local_path.exists() {
-            std::fs::remove_file(&local_path).expect("Bug: remove file must succeed");
+            std::fs::remove_file(local_path.to_path_buf_current_os()).expect("Bug: remove file must succeed");
         }
         let _file = FileTxt::open_for_read_and_write(&local_path).expect("Bug: open_for_read_and_write must succeed.");
-        println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string_lossy().to_string(), &thread_name);
+        println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string(), &thread_name);
     } else {
         let mut bytes_out = 0u64;
-        let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string_lossy().to_string());
-        let base_temp_path_to_download = ext_disk_base_path.join("0_backup_temp").join("download_temp");
-        if !base_temp_path_to_download.exists() {
-            std::fs::create_dir_all(&base_temp_path_to_download)?;
-        }
-        let unique_name = local_path.to_string_lossy().replace("/", "_");
-        let temp_local_path = base_temp_path_to_download.join(unique_name);
-        let mut file = std::fs::OpenOptions::new().create(true).write(true).open(&temp_local_path)?;
+        let download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string());
+        let base_temp_path_to_download = ext_disk_base_path.join_relative("0_backup_temp")?.join_relative("download_temp")?;
+        base_temp_path_to_download.create_dir_all()?;
+        let unique_name = local_path.as_str().replace("/", "_");
+        let temp_local_path = base_temp_path_to_download.join_relative(&unique_name)?;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(temp_local_path.to_path_buf_current_os())?;
         file.set_modified(system_time_modified).unwrap();
 
         // I will download to a temp folder and then move the file to the right folder only when the download is complete.
@@ -466,18 +500,22 @@ fn download_internal(
                                 break 'download;
                             }
                             Ok(len) => {
-                                bytes_out += len as u64;
+                                bytes_out += len;
                                 if let Some(total) = download_result.content_length {
                                     let string_to_print = format!(
                                         "{:.01}% of {:.02} MB downloading {}",
                                         bytes_out as f64 / total as f64 * 100.,
                                         total as f64 / 1000000.,
-                                        crate::shorten_string(&path_to_download.to_string_lossy(), 80)
+                                        crate::shorten_string(path_to_download.as_str(), 80)
                                     );
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
-                                    just_downloaded = path_to_download.to_string_lossy().to_string();
+                                    just_downloaded = path_to_download.to_string();
                                 } else {
-                                    let string_to_print = format!("{} MB downloaded {}", bytes_out as f64 / 1000000., crate::shorten_string(&path_to_download.to_string_lossy(), 80));
+                                    let string_to_print = format!(
+                                        "{} MB downloaded {}",
+                                        bytes_out as f64 / 1000000.,
+                                        crate::shorten_string(path_to_download.as_str(), 80)
+                                    );
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                                 }
                             }
@@ -500,14 +538,14 @@ fn download_internal(
             }
             break 'download;
         }
-/*         // change the datetime of the file
+        /*         // change the datetime of the file
         if let Err(err) = filetime::set_file_mtime(&temp_local_path, modified){
             let string_to_print = format!("Error: {} {} {err}",temp_local_path.to_string_lossy(), modified.unix_seconds());
             println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
         } */
 
         // move the completed download file to his final folder
-        std::fs::rename(&temp_local_path,local_path)?;
+        std::fs::rename(temp_local_path.to_path_buf_current_os(), local_path.to_path_buf_current_os())?;
     }
     // Cannot change the LastWrite/modified time from the Linux container in WSL to external exFAT on Windows.
     // I will instead cross-compile to Windows and run the exe in Windows where it works much better with the external exFAT drive.
