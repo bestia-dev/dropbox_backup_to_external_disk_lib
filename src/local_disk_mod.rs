@@ -21,9 +21,10 @@ use crate::{
     DropboxBackupToExternalDiskError, FileTxt,
 };
 
-/// the logic is in the LIB project, but all UI is in the CLI project
-/// they run on different threads and communicate
-/// It uses the global APP_STATE for all config data
+/// The logic is in the LIB project, but all UI is in the CLI project.  \
+///
+/// They run on different threads and communicate.  \
+/// It uses the global APP_STATE for all config data.  
 pub fn list_local(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     ext_disk_base_path: String,
@@ -55,16 +56,16 @@ pub fn list_local(
         let str_path = path
             .to_str()
             .ok_or_else(|| DropboxBackupToExternalDiskError::ErrorFromStr("Error string is not path"))?;
-        // I don't need the "base" folder in this list
+        // I don't need the "base" folder in this list. The ext_disk_base_path always ends with slash.
         let str_path_wo_base = str_path.trim_start_matches(&ext_disk_base_path);
-        // change windows style with backslash to Linux style with slash
+        // change windows style with backslash to Linux style with neutral crossplatform slash
         let str_path_wo_base = str_path_wo_base.replace(r#"\"#, "/");
         let str_path_wo_base = &str_path_wo_base;
         // path.is_dir() is slow. entry.file-type().is_dir() is fast
         if entry.file_type().is_dir() {
             if !str_path_wo_base.is_empty() {
                 // avoid the temp_trash folder
-                if !str_path_wo_base.starts_with("/0_backup_temp") {
+                if !str_path_wo_base.starts_with("0_backup_temp") {
                     folders_string.push_str(&format!("{}\n", str_path_wo_base));
                     // don't print every folder, because print is slow. Check if 100ms passed
                     if last_send_ms.elapsed().as_millis() >= 100 {
@@ -83,7 +84,7 @@ pub fn list_local(
             // write csv tab delimited
             // metadata() in wsl/Linux is slow. Nothing to do here.
             if let Ok(metadata) = entry.metadata() {
-                if !str_path_wo_base.starts_with("/0_backup_temp") {
+                if !str_path_wo_base.starts_with("0_backup_temp") {
                     use chrono::offset::Utc;
                     use chrono::DateTime;
                     let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
@@ -103,13 +104,6 @@ pub fn list_local(
             }
         }
     }
-
-    // Windows uses backslash instead of slash. Bad Microsoft!!!
-    // replace all backslash with slash to make it Linux comparable
-    // the sorting depends of this replace
-    let files_string = files_string.replace(r#"\"#, r#"/"#);
-    let folders_string = folders_string.replace(r#"\"#, r#"/"#);
-    let readonly_files_string = readonly_files_string.replace(r#"\"#, r#"/"#);
 
     // region: sort
     let files_sorted_string = crate::sort_string_lines(&files_string);
@@ -136,8 +130,9 @@ pub fn list_local(
     Ok(())
 }
 
-/// The backup files must not be readonly to allow copying the modified file from the remote.
-/// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.
+/// The backup files must not be readonly to allow copying the modified file from the remote.  \
+///
+/// The FileTxt is read+write. It is opened in the bin and not in lib, but it is manipulated only in lib.  
 pub fn read_only_remove(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
@@ -164,7 +159,7 @@ pub fn read_only_remove(
     Ok(())
 }
 
-/// create new empty folders
+/// Create new empty folders.  
 pub fn create_folders(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
@@ -187,12 +182,13 @@ pub fn create_folders(
     Ok(())
 }
 
-/// Files are often moved or renamed
-/// After compare, the same file (with different path or name) will be in the list_for_trash_files and in the list_for_download.
-/// First for every trash line, we search list_for_download for same size and modified.
-/// If found, get the remote_metadata with content_hash and calculate local_content_hash.
-/// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.
-/// Remove also the lines in files list_for_trash_files and list_for_download.
+/// Files are often moved or renamed.  \
+///
+/// After compare, the same file (with different path or name) will be in the list_for_trash_files and in the list_for_download.  \
+/// First for every trash line, we search list_for_download for same size and modified.  \
+/// If found, get the remote_metadata with content_hash and calculate local_content_hash.  \
+/// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.  \
+/// Remove also the lines in files list_for_trash_files and list_for_download.  
 pub fn move_or_rename_local_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
@@ -270,7 +266,7 @@ fn move_or_rename_local_files_internal_by_name(
         let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
         let string_path_for_trash_files = vec_line_for_trash[0];
         let path_global_to_trash_files = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
-        // if path does not exist ignore, probably it eas moved or trashed earlier
+        // if path does not exist ignore, probably it has moved or trashed earlier
         if path_global_to_trash_files.exists() {
             let modified_for_trash_files = vec_line_for_trash[1];
             let size_for_trash_files = vec_line_for_trash[2];
@@ -323,7 +319,7 @@ fn move_or_rename_local_files_internal_by_name(
     Ok(())
 }
 
-// internal because of catching errors
+// Internal because of catching errors.
 fn move_or_rename_local_files_internal_by_hash(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
@@ -385,7 +381,7 @@ fn move_or_rename_local_files_internal_by_hash(
     Ok(())
 }
 
-/// internal code to move file
+/// Internal code to move file.  
 fn move_internal(
     ui_tx: &std::sync::mpsc::Sender<String>,
     path_global_to_trash: &CrossPathBuf,
@@ -425,8 +421,9 @@ fn get_content_hash(path_for_download: &str) -> Result<String, DropboxBackupToEx
     Ok(crate::remote_dropbox_mod::remote_content_hash(path_for_download, &client).expect("Bug: dropbox metadata must have hash."))
 }
 
-/// Move to trash folder the files from list_for_trash_files.
-/// Ignore if the file does not exist anymore.
+/// Move to trash folder the files from list_for_trash_files.  \
+///
+/// Ignore if the file does not exist anymore.  
 pub fn trash_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
@@ -451,7 +448,7 @@ pub fn trash_files(
     Ok(())
 }
 
-/// internal
+/// Internal function.  
 fn trash_files_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,

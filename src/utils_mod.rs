@@ -8,14 +8,16 @@ use uncased::UncasedStr;
 // but programmatically identical to the underlying type
 type ThreadName = String;
 
-/// println_to_ui_thread sends the string to ui thread and works similarly to println!
-/// It panics if there is a bug in the code. This is not a recoverable error.
+/// Println_to_ui_thread sends the string to ui thread and works similarly to println.  \
+///
+/// It panics if there is a bug in the code. This is not a recoverable error.  
 pub fn println_to_ui_thread(ui_tx: &std::sync::mpsc::Sender<String>, string: String) {
     ui_tx.send(string).expect("Error mpsc send");
 }
 
-/// println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println!
-/// It panics if there is a bug in the code. This is not a recoverable error.
+/// Println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println.  \
+///
+/// It panics if there is a bug in the code. This is not a recoverable error.  
 pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: &str) {
     ui_tx.send((string, thread_name.to_string())).expect("Bug: mpsc send");
 }
@@ -140,7 +142,7 @@ pub fn press_enter_to_continue_timeout_5_sec() {
 }
  */
 
-/// shorten path for screen to avoid word-wrap
+/// Shorten path for screen to avoid word-wrap.  
 pub fn shorten_string(text: &str, x_max_char: u16) -> String {
     if text.chars().count() > x_max_char as usize {
         let x_half_in_char = (x_max_char / 2 - 2) as usize;
@@ -152,13 +154,14 @@ pub fn shorten_string(text: &str, x_max_char: u16) -> String {
     }
 }
 
-/// it is used for substring, because string slice are counted in bytes and not chars.
-/// if we have multi-byte unicode characters we can get an error if the boundary is not on char boundary.
+/// It is used for substring, because string slice are counted in bytes and not chars.  \
+///
+/// If we have multi-byte unicode characters we can get an error if the boundary is not on char boundary.  
 pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> usize {
     text.char_indices().nth(char_pos).unwrap().0
 }
 
-/// sort string lines case insensitive
+/// Sort string lines case insensitive.  
 pub fn sort_string_lines(output_string: &str) -> String {
     let mut sorted_local: Vec<&str> = output_string.lines().collect();
 
@@ -172,7 +175,7 @@ pub fn sort_string_lines(output_string: &str) -> String {
     sorted_local.join("\n")
 }
 
-/// sort list case insensitive
+/// Sort list case insensitive.  
 pub fn sort_list(mut list: Vec<String>) -> String {
     use rayon::prelude::*;
     list.par_sort_unstable_by(|a, b| {

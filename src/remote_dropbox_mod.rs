@@ -21,9 +21,10 @@ type ThreadName = String;
 type MasterKey = String;
 type TokenEnc = String;
 
-/// This is a short-lived token, so security is not my primary concern.
-/// But it is bad practice to store anything as plain text. I will encode it and store it in env var.
-/// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.
+/// This is a short-lived token, so security is not my primary concern.  \
+///
+/// But it is bad practice to store anything as plain text. I will encode it and store it in env var.  \
+/// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.  
 pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), DropboxBackupToExternalDiskError> {
     // every time, the master key will be random and temporary
     // TODO: fernet is using OpenSSL and that cannot be cross-compile to windows
@@ -34,8 +35,9 @@ pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), DropboxBacku
     Ok((master_key, token_enc))
 }
 
-/// test authentication with dropbox.com
-/// experiment with sending function pointer
+/// Test authentication with dropbox.com.  \
+///
+/// Experiment with sending function pointer.  
 pub fn test_connection() -> Result<(), DropboxBackupToExternalDiskError> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
@@ -43,7 +45,7 @@ pub fn test_connection() -> Result<(), DropboxBackupToExternalDiskError> {
     Ok(())
 }
 
-/// read encoded token (from env), decode and return the authorization token
+/// Read encoded token (from env), decode and return the authorization token.  
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, DropboxBackupToExternalDiskError> {
     // the global APP_STATE method reads encoded tokens from env var
     let (_master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
@@ -56,8 +58,9 @@ pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, D
     Ok(dropbox_sdk::oauth2::Authorization::from_long_lived_access_token(token))
 }
 
-/// get remote list in parallel
-/// first get the first level of folders and then request in parallel sub-folders recursively
+/// Get remote list in parallel.  \
+///
+/// First get the first level of folders and then request in parallel sub-folders recursively.  
 pub fn list_remote(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     mut file_list_source_files: FileTxt,
@@ -90,6 +93,8 @@ pub fn list_remote(
             // these folders will request walkdir recursive in parallel
             // loop in a new thread, so the send msg will come immediately
             for folder_path in folder_list_root.iter() {
+                // I store paths without leading slash, but it needs it for the API call.
+                let folder_path = format!("/{folder_path}");
                 // execute in a separate threads, or waits for a free thread from the pool
                 // scoped.spawn closure cannot return a Result<>, but it can send it as inter-thread message
                 scoped.spawn({
@@ -152,7 +157,7 @@ pub fn list_remote(
     Ok(())
 }
 
-/// list remote folder
+/// List remote folder.  
 pub fn list_remote_folder(
     client: &dropbox_sdk::default_client::UserAuthDefaultClient,
     path: &str,
@@ -171,28 +176,30 @@ pub fn list_remote_folder(
                     Ok(Ok(dropbox_sdk::files::Metadata::Folder(entry))) => {
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let folder_path = entry.path_display.unwrap_or(entry.name);
+                        let folder_path = folder_path.trim_start_matches("/");
                         // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                         if last_send_ms.elapsed().as_millis() >= 100 {
                             println_to_ui_thread_with_thread_name(
                                 &ui_tx,
-                                format!("Folder: {}", crate::shorten_string(&folder_path, 80)),
+                                format!("Folder: {}", crate::shorten_string(folder_path, 80)),
                                 &format!("R{thread_num}"),
                             );
                             last_send_ms = std::time::Instant::now();
                         }
-                        folder_list.push(folder_path);
+                        folder_list.push(folder_path.to_string());
                     }
                     Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => {
                         // write csv tab delimited
                         // avoid strange files *com.dropbox.attrs
                         // path_display is not 100% case accurate. Dropbox is case-insensitive and preserves the casing only for the metadata_name, not path.
                         let file_path = entry.path_display.unwrap_or(entry.name);
+                        let file_path = file_path.trim_start_matches("/");
                         if !file_path.ends_with("com.dropbox.attrs") {
                             // writing to screen is slow, I will not write every folder/file, but will wait for 100ms
                             if last_send_ms.elapsed().as_millis() >= 100 {
                                 println_to_ui_thread_with_thread_name(
                                     &ui_tx,
-                                    format!("File: {}", crate::shorten_string(&file_path, 80)),
+                                    format!("File: {}", crate::shorten_string(file_path, 80)),
                                     &format!("R{thread_num}"),
                                 );
                                 last_send_ms = std::time::Instant::now();
@@ -235,7 +242,7 @@ pub fn list_remote_folder(
     }
 }
 
-/// dropbox function to list folders
+/// Dropbox function to list folders.  
 fn dropbox_list_folder<'a>(
     client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
     path: &str,
@@ -270,7 +277,7 @@ fn dropbox_list_folder<'a>(
     }
 }
 
-/// iterator for Directory on remote Dropbox storage
+/// Iterator for Directory on remote Dropbox storage.  
 struct DirectoryIterator<'a> {
     client: &'a dropbox_sdk::default_client::UserAuthDefaultClient,
     buffer: std::collections::VecDeque<dropbox_sdk::files::Metadata>,
@@ -301,7 +308,7 @@ impl<'a> Iterator for DirectoryIterator<'a> {
     }
 }
 
-/// get content_hash from remote
+/// Get content_hash from remote.
 pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_client::UserAuthDefaultClient) -> Option<String> {
     let arg = dropbox_sdk::files::GetMetadataArg::new(remote_path.to_string());
     let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
@@ -321,8 +328,9 @@ pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_clie
     }
 }
 
-/// download one file is calling internally download_from_vec
-/// This is used just for debugging. For real the user will run download_from_list.
+/// Download one file is calling internally download_from_vec.  \
+///
+/// This is used just for debugging. For real the user will run download_from_list.  
 pub fn download_one_file(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     ext_disk_base_path: &CrossPathBuf,
@@ -336,8 +344,9 @@ pub fn download_one_file(
     Ok(())
 }
 
-/// download files from list
-/// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.
+/// Download files from list.  \
+///
+/// It removes just_downloaded from list_for_download, so this function can be stopped and then called again.  
 pub fn download_from_list(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     ext_disk_base_path: &CrossPathBuf,
@@ -429,7 +438,7 @@ fn download_from_vec(
     Ok(())
 }
 
-/// download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient
+/// Download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient.
 fn download_internal(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     ext_disk_base_path: &CrossPathBuf,
@@ -439,6 +448,8 @@ fn download_internal(
     files_append_tx: std::sync::mpsc::Sender<String>,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
     let thread_name = format!("R{thread_num}");
+    // add a leading slash to path_to_download because the dropbox_sdk needs it
+    let path_to_download = path_to_download.add_start_slash()?;
     let local_path = ext_disk_base_path.join_relative(path_to_download.as_str())?;
     local_path.create_dir_all_for_file()?;
     let modified_str;
@@ -446,6 +457,7 @@ fn download_internal(
     let mut just_downloaded = String::new();
 
     // get datetime from remote
+
     let get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string());
     let metadata = (dropbox_sdk::files::get_metadata(client, &get_metadata_arg)?)?;
     match metadata {

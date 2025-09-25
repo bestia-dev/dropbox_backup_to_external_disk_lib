@@ -200,9 +200,9 @@ checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "crossplatform_path"
-version = "1.0.21"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed5fdda35f0de0f12910ece8aedb53a355c4a052bedb9e8c38c5b345d845fd27"
+checksum = "937e0945cd882315a3204d8a9e20ade7db631901abd69538f2c83ca916d93a02"
 dependencies = [
  "anyhow",
  "thiserror 2.0.16",
@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "dropbox_backup_to_external_disk_lib"
-version = "2.1.117"
+version = "2.1.124"
 dependencies = [
  "anyhow",
  "chrono",

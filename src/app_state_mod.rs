@@ -6,23 +6,24 @@ use crate::error_mod::DropboxBackupToExternalDiskError;
 
 #[derive(Debug)]
 pub struct AppConfig {
-    pub path_list_ext_disk_base_path: &'static CrossPathBuf,
-    pub path_list_source_files: &'static CrossPathBuf,
-    pub path_list_destination_files: &'static CrossPathBuf,
-    pub path_list_source_folders: &'static CrossPathBuf,
-    pub path_list_destination_folders: &'static CrossPathBuf,
-    pub path_list_destination_readonly_files: &'static CrossPathBuf,
-    pub path_list_for_download: &'static CrossPathBuf,
-    pub path_list_for_trash_files: &'static CrossPathBuf,
-    pub path_list_just_downloaded: &'static CrossPathBuf,
-    pub path_list_for_trash_folders: &'static CrossPathBuf,
-    pub path_list_for_create_folders: &'static CrossPathBuf,
+    pub path_list_ext_disk_base_path: CrossPathBuf,
+    pub path_list_source_files: CrossPathBuf,
+    pub path_list_destination_files: CrossPathBuf,
+    pub path_list_source_folders: CrossPathBuf,
+    pub path_list_destination_folders: CrossPathBuf,
+    pub path_list_destination_readonly_files: CrossPathBuf,
+    pub path_list_for_download: CrossPathBuf,
+    pub path_list_for_trash_files: CrossPathBuf,
+    pub path_list_just_downloaded: CrossPathBuf,
+    pub path_list_for_trash_folders: CrossPathBuf,
+    pub path_list_for_create_folders: CrossPathBuf,
 }
 
-/// This trait defines what functions must the bin project implement then the lib project can use them.  
-/// All IO must be defined inside the bin project: UI, env, file access.  
-/// That way the same lib project can be used from different bin: CLI, TUI, GUI, env, file, network,...  
-/// These methods will be available globally.
+/// This trait defines what functions must the bin project implement then the lib project can use them.  \
+///
+/// All IO must be defined inside the bin project: UI, env, file access.  \
+/// That way the same lib project can be used from different bin: CLI, TUI, GUI, env, file, network,...  \
+/// These methods will be available globally.  
 pub trait AppStateMethods: Sync + Send {
     /// get encrypted authorization token from env var
     fn load_keys_from_io(&self) -> Result<(String, String), DropboxBackupToExternalDiskError>;
@@ -32,12 +33,14 @@ pub trait AppStateMethods: Sync + Send {
     fn lock_proba(&self) -> std::sync::MutexGuard<'_, String>;
 }
 
-/// Global variable to store the Application state.  
-/// Global variables are so complicated in Rust.  
-/// Read more: <https://www.sitepoint.com/rust-global-variables/>  
-/// I will use Multi-threaded Global Variable with Runtime Initialization and Interior Mutability, the most complicated and usable one.  
-/// All fields are private. Only the methods can be used globally.  
-/// Example how to use it:
+/// Global variable to store the Application state.  \
+///
+/// Global variables are so complicated in Rust.  \
+/// Read more: <https://www.sitepoint.com/rust-global-variables/>  \
+/// I will use Multi-threaded Global Variable with Runtime Initialization and Interior Mutability, the most complicated and usable one.  \
+/// All fields are private. Only the methods can be used globally.  \
+/// Example how to use it:  \
+///
 /// ```rust ignore
 /// fn global_app_state() -> &'static Box<dyn lib::AppStateMethods> {
 ///     lib::APP_STATE.get().expect("Error OnceCell must not be empty.")
@@ -51,6 +54,7 @@ pub fn global_config() -> &'static AppConfig {
     global_app_state().ref_app_config()
 }
 
+/// Returns the global app state.
 // Clippy warning here, but I don't know how to change this.
 // for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#borrowed_box
 #[allow(clippy::borrowed_box)]

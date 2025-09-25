@@ -6,7 +6,7 @@
 //! Is the bin project that knows if it is CLI, TUI or GUI and it presents the errors to the user and developer.
 //! Then in the bin project I use the crate anyhow.
 
-/// list of possible errors from this library
+/// List of possible errors from this library.
 #[derive(thiserror::Error, Debug)]
 pub enum DropboxBackupToExternalDiskError {
     #[error("VarError: {0}")]

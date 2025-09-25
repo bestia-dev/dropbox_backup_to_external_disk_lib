@@ -7,26 +7,26 @@ use crossplatform_path::CrossPathBuf;
 use dropbox_content_hasher::DropboxContentHasher;
 use uncased::UncasedStr;
 
-/// compare list: the lists and produce list_for_download, list_for_trash_files
+/// Compare list: the lists and produce list_for_download, list_for_trash_files.  
 pub fn compare_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     app_config: &'static crate::AppConfig,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
     //add_just_downloaded_to_list_local(app_config);
-    let base_path = FileTxt::open_for_read(app_config.path_list_ext_disk_base_path)?.read_to_string()?;
+    let base_path = FileTxt::open_for_read(&app_config.path_list_ext_disk_base_path)?.read_to_string()?;
     let base_path = CrossPathBuf::new(&base_path).unwrap();
     compare_lists_internal(
         ui_tx,
-        app_config.path_list_source_files,
-        app_config.path_list_destination_files,
-        app_config.path_list_for_download,
-        app_config.path_list_for_trash_files,
+        &app_config.path_list_source_files,
+        &app_config.path_list_destination_files,
+        &app_config.path_list_for_download,
+        &app_config.path_list_for_trash_files,
         &base_path,
     )?;
     Ok(())
 }
 
-/// compare list: the lists must be already sorted for this to work correctly
+/// Compare list: the lists must be already sorted for this to work correctly.  
 fn compare_lists_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
     path_list_source_files: &CrossPathBuf,
@@ -40,7 +40,7 @@ fn compare_lists_internal(
     let vec_list_source_files: Vec<&str> = string_list_source_files.lines().collect();
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_source_files.file_name(), vec_list_source_files.len()),
+        format!("{}: {}", file_list_source_files.file_name()?, vec_list_source_files.len()),
     );
 
     let file_list_destination_files = FileTxt::open_for_read(path_list_destination_files)?;
@@ -48,7 +48,7 @@ fn compare_lists_internal(
     let vec_list_destination_files: Vec<&str> = string_list_destination_files.lines().collect();
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_destination_files.file_name(), vec_list_destination_files.len()),
+        format!("{}: {}", file_list_destination_files.file_name()?, vec_list_destination_files.len()),
     );
 
     let mut vec_for_download: Vec<String> = vec![];
@@ -111,10 +111,7 @@ fn compare_lists_internal(
                     // /BestiaDev/github_backup_active/github_backup_private/obsidian_bestia_dev/.git/objects/1f/55b1a1662d4c06e1909f73877513bf38cc390e
                     // I can recognize them id the path contains '/.git/'
                     // I will use content_hash to be sure that these files are equal.
-                    // TODO: cannot use join, because windows has different paths than Linux, slash and backslash nightmare
-                    // but inside git-bash the normal slash should work. Only when running a command, but later it is all windows.
-                    let path_global_to_destination_file = format!("{}{}", base_path, vec_line_destination[0].replace(r#"/"#, r#"\"#));
-                    let path_global_to_destination_file = CrossPathBuf::new(&path_global_to_destination_file).unwrap();
+                    let path_global_to_destination_file = base_path.join_relative(vec_line_destination[0]).unwrap();
                     // get content_hash from destination file
                     let local_content_hash = format!(
                         "{:x}",
@@ -144,7 +141,7 @@ fn compare_lists_internal(
     let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_for_downloads.file_name(), vec_for_download.len()),
+        format!("{}: {}", file_list_for_downloads.file_name()?, vec_for_download.len()),
     );
     let string_for_download = vec_for_download.join("\n");
     file_list_for_downloads.write_append_str(&string_for_download)?;
@@ -152,7 +149,7 @@ fn compare_lists_internal(
     let mut file_list_for_trash_files = FileTxt::open_for_read_and_write(path_list_for_trash)?;
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_for_trash_files.file_name(), vec_for_trash.len()),
+        format!("{}: {}", file_list_for_trash_files.file_name()?, vec_for_trash.len()),
     );
     let string_for_trash_files = vec_for_trash.join("\n");
     file_list_for_trash_files.write_append_str(&string_for_trash_files)?;
@@ -160,8 +157,9 @@ fn compare_lists_internal(
     Ok(())
 }
 
-/// compare folders and write folders to trash into path_list_for_trash_folders
-/// the list is already sorted
+/// Compare folders and write folders to trash into path_list_for_trash_folders.  \
+///
+/// The list is already sorted.  
 pub fn compare_folders(
     ui_tx: std::sync::mpsc::Sender<String>,
     string_list_source_folders: &str,
@@ -211,13 +209,13 @@ pub fn compare_folders(
     }
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_for_trash_folders.file_name(), vec_for_trash.len()),
+        format!("{}: {}", file_list_for_trash_folders.file_name()?, vec_for_trash.len()),
     );
     let string_for_trash_files = vec_for_trash.join("\n");
     file_list_for_trash_folders.write_append_str(&string_for_trash_files)?;
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_for_create_folders.file_name(), vec_for_create.len()),
+        format!("{}: {}", file_list_for_create_folders.file_name()?, vec_for_create.len()),
     );
     let string_for_create = vec_for_create.join("\n");
     file_list_for_create_folders.write_append_str(&string_for_create)?;
