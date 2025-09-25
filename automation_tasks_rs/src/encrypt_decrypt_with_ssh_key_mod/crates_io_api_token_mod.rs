@@ -37,6 +37,7 @@
 //! aes-gcm = "0.10.3"
 //! base64ct = {version = "1.6.0", features = ["alloc"] }
 //! secrecy = "0.10.3"
+//! crossplatform_path="1.1.1"
 //! ```
 //!
 

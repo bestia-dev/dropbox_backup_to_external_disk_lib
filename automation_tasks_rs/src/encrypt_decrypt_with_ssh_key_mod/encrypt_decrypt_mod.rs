@@ -333,4 +333,3 @@ pub(crate) fn decrypt_symmetric(
     Ok(secret_decrypted_string)
 }
 // endregion: symmetrical encrypt and decrypt
-

@@ -65,6 +65,7 @@
 //! base64ct = {version = "1.6.0", features = ["alloc"] }
 //! secrecy = "0.10.3"
 //! chrono ="0.4.39"
+//! crossplatform_path="1.1.1"
 //! ```
 //!
 
