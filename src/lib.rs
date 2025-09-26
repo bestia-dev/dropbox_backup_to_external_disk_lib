@@ -15,7 +15,9 @@ pub use crate::app_state_mod::{global_app_state, global_config, AppConfig, AppSt
 pub use crate::compare_mod::{compare_files, compare_folders};
 pub use crate::error_mod::DropboxBackupToExternalDiskError;
 pub use crate::file_txt_mod::FileTxt;
-pub use crate::local_disk_mod::{create_folders, list_local, move_or_rename_local_files, read_only_remove, trash_files, trash_folders};
+pub use crate::local_disk_mod::{
+    change_time_files, create_folders, list_local, move_local_files, read_only_remove, rename_local_files, trash_files, trash_folders,
+};
 pub use crate::remote_dropbox_mod::{download_from_list, download_one_file, encode_token, list_remote, test_connection};
 pub use crate::utils_mod::{shorten_string, sort_string_lines};
 
@@ -57,8 +59,10 @@ pub fn all_list_remote_and_local(ext_disk_base_path: &str, app_config: &'static 
 pub fn sync_only(app_config: &'static AppConfig) {
     println!("{}compare remote and local lists{}", *YELLOW, *RESET);
     compare_files(app_config);
-    println!("{}rename or move equal files{}", *YELLOW, *RESET);
-    move_or_rename_local_files(app_config);
+    println!("{}move equal files{}", *YELLOW, *RESET);
+    move_local_files(app_config);
+    println!("{}rename equal files{}", *YELLOW, *RESET);
+    rename_local_files(app_config);
     println!("{}move to trash from list{}", *YELLOW, *RESET);
     trash_files(app_config);
     press_enter_to_continue_timeout_5_sec();

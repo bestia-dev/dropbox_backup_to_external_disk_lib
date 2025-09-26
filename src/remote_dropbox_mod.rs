@@ -308,26 +308,6 @@ impl<'a> Iterator for DirectoryIterator<'a> {
     }
 }
 
-/// Get content_hash from remote.
-pub fn remote_content_hash(remote_path: &str, client: &dropbox_sdk::default_client::UserAuthDefaultClient) -> Option<String> {
-    let arg = dropbox_sdk::files::GetMetadataArg::new(remote_path.to_string());
-    let res_res_metadata = dropbox_sdk::files::get_metadata(client, &arg);
-
-    match res_res_metadata {
-        Ok(Ok(dropbox_sdk::files::Metadata::Folder(_entry))) => None,
-        Ok(Ok(dropbox_sdk::files::Metadata::File(entry))) => Some(entry.content_hash.expect("Bug: dropbox metadata must have hash.")),
-        Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => None,
-        Ok(Err(e)) => {
-            println!("Error get metadata: {}", e);
-            None
-        }
-        Err(e) => {
-            println!("API request error: {}", e);
-            None
-        }
-    }
-}
-
 /// Download one file is calling internally download_from_vec.  \
 ///
 /// This is used just for debugging. For real the user will run download_from_list.  

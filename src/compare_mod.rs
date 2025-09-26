@@ -17,11 +17,12 @@ pub fn compare_files(
     let base_path = CrossPathBuf::new(&base_path).unwrap();
     compare_lists_internal(
         ui_tx,
+        &base_path,
         &app_config.path_list_source_files,
         &app_config.path_list_destination_files,
         &app_config.path_list_for_download,
         &app_config.path_list_for_trash_files,
-        &base_path,
+        &app_config.path_list_for_change_time_files,
     )?;
     Ok(())
 }
@@ -29,11 +30,12 @@ pub fn compare_files(
 /// Compare list: the lists must be already sorted for this to work correctly.  
 fn compare_lists_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
+    base_path: &CrossPathBuf,
     path_list_source_files: &CrossPathBuf,
     path_list_destination_files: &CrossPathBuf,
     path_list_for_download: &CrossPathBuf,
     path_list_for_trash: &CrossPathBuf,
-    base_path: &CrossPathBuf,
+    path_list_for_change_time_files: &CrossPathBuf,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
     let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
@@ -53,6 +55,7 @@ fn compare_lists_internal(
 
     let mut vec_for_download: Vec<String> = vec![];
     let mut vec_for_trash: Vec<String> = vec![];
+    let mut vec_for_change_time_files: Vec<String> = vec![];
     let mut cursor_source = 0;
     let mut cursor_destination = 0;
     //avoid making new allocations or shadowing inside a loop
@@ -94,7 +97,7 @@ fn compare_lists_internal(
                 cursor_destination += 1;
                 cursor_source += 1;
             } else {
-                // equal names, check date and later check content_hash
+                // equal names, equal size, check date and later check content_hash
                 let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1])
                     .expect("Bug: datetime must be correct")
                     .into();
@@ -117,6 +120,8 @@ fn compare_lists_internal(
                         "{:x}",
                         DropboxContentHasher::hash_file(path_global_to_destination_file.to_path_buf_current_os()).unwrap()
                     );
+
+                    // a simple rudimentary progress bar
                     if i > 40 {
                         i = 0;
                         print!(".");
@@ -129,6 +134,9 @@ fn compare_lists_internal(
                     if local_content_hash != vec_line_source[3] {
                         // println!("{} {}", local_content_hash, vec_line_source[3]);
                         vec_for_download.push(vec_list_source_files[cursor_source].to_string());
+                    } else {
+                        // these files need change datetime
+                        vec_for_change_time_files.push(vec_list_source_files[cursor_source].to_string());
                     }
                 }
                 // else the metadata is the same, no action
@@ -138,13 +146,18 @@ fn compare_lists_internal(
         }
     }
     println!();
-    let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
+
+    let mut file_list_for_change_time_files = FileTxt::open_for_read_and_write(path_list_for_change_time_files)?;
     println_to_ui_thread(
         &ui_tx,
-        format!("{}: {}", file_list_for_downloads.file_name()?, vec_for_download.len()),
+        format!(
+            "{}: {}",
+            file_list_for_change_time_files.file_name()?,
+            vec_for_change_time_files.len()
+        ),
     );
-    let string_for_download = vec_for_download.join("\n");
-    file_list_for_downloads.write_append_str(&string_for_download)?;
+    let string_for_change_time_files = vec_for_change_time_files.join("\n");
+    file_list_for_change_time_files.write_append_str(&string_for_change_time_files)?;
 
     let mut file_list_for_trash_files = FileTxt::open_for_read_and_write(path_list_for_trash)?;
     println_to_ui_thread(
@@ -153,6 +166,14 @@ fn compare_lists_internal(
     );
     let string_for_trash_files = vec_for_trash.join("\n");
     file_list_for_trash_files.write_append_str(&string_for_trash_files)?;
+
+    let mut file_list_for_downloads = FileTxt::open_for_read_and_write(path_list_for_download)?;
+    println_to_ui_thread(
+        &ui_tx,
+        format!("{}: {}", file_list_for_downloads.file_name()?, vec_for_download.len()),
+    );
+    let string_for_download = vec_for_download.join("\n");
+    file_list_for_downloads.write_append_str(&string_for_download)?;
 
     Ok(())
 }
@@ -288,7 +309,7 @@ fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, p
         let new_local_files = vec_sorted_local.join("\n");
         unwrap!(fs::write(path_list_local_files, &new_local_files));
 
-        // empty the file tmp/temp_data/list_just_downloaded.csv
+        // empty the file tmp/list_just_downloaded.csv
         // println!("list_just_downloaded emptied");
         unwrap!(fs::write(path_list_just_downloaded, ""));
     }

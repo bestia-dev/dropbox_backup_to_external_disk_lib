@@ -2,6 +2,7 @@
 
 //! Module contains all functions for local external disk.
 
+use chrono::{DateTime, Utc};
 use crossplatform_path::CrossPathBuf;
 #[allow(unused_imports)]
 use dropbox_content_hasher::DropboxContentHasher;
@@ -136,10 +137,10 @@ pub fn list_local(
 pub fn read_only_remove(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
-    file_destination_readonly_files: &mut FileTxt,
+    file_readonly_files: &mut FileTxt,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
-    let list_destination_readonly_files = file_destination_readonly_files.read_to_string()?;
-    for string_path_for_readonly in list_destination_readonly_files.lines() {
+    let list_readonly_files = file_readonly_files.read_to_string()?;
+    for string_path_for_readonly in list_readonly_files.lines() {
         let path_global_path_to_readonly = ext_disk_base_path.join_relative(string_path_for_readonly)?;
         // if path does not exist ignore
         if path_global_path_to_readonly.exists() {
@@ -155,6 +156,31 @@ pub fn read_only_remove(
                 }
             }
         }
+    }
+    file_readonly_files.empty()?;
+    Ok(())
+}
+
+/// Change time of files.  
+pub fn change_time_files(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    file_list_for_change_time_files: &mut FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
+    let list_for_change_time_files = file_list_for_change_time_files.read_to_string()?;
+    if list_for_change_time_files.is_empty() {
+        println_to_ui_thread(&ui_tx, "list_for_change_time_files is empty".to_string());
+    } else {
+        for line in list_for_change_time_files.lines() {
+            let vec_line: Vec<&str> = line.split("\t").collect();
+            let path = vec_line[0];
+            let datetime = vec_line[1];
+            let path_global_path = ext_disk_base_path.join_relative(path)?;
+            println_to_ui_thread(&ui_tx, path_global_path.to_string());
+            let modified = filetime::FileTime::from_system_time(humantime::parse_rfc3339(datetime).unwrap());
+            filetime::set_file_mtime(path_global_path.to_path_buf_current_os(), modified).unwrap();
+        }
+        file_list_for_change_time_files.empty()?;
     }
     Ok(())
 }
@@ -182,14 +208,13 @@ pub fn create_folders(
     Ok(())
 }
 
-/// Files are often moved or renamed.  \
+/// Files are often moved.  \
 ///
 /// After compare, the same file (with different path or name) will be in the list_for_trash_files and in the list_for_download.  \
-/// First for every trash line, we search list_for_download for same size and modified.  \
-/// If found, get the remote_metadata with content_hash and calculate local_content_hash.  \
-/// If they are equal move or rename, else nothing: it will be trashed and downloaded eventually.  \
+/// First for every trash line, we search list_for_download for same name, size and modified.  \
+/// If they are equal move, else nothing: it will be trashed and downloaded eventually.  \
 /// Remove also the lines in files list_for_trash_files and list_for_download.  
-pub fn move_or_rename_local_files(
+pub fn move_local_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_files: &mut FileTxt,
@@ -200,7 +225,7 @@ pub fn move_or_rename_local_files(
     let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_name(
+    match move_local_files_internal_by_name(
         ui_tx.clone(),
         ext_disk_base_path,
         &mut vec_list_for_trash_files,
@@ -222,13 +247,28 @@ pub fn move_or_rename_local_files(
             return Err(err);
         }
     }
+    Ok(())
+}
 
+/// Files are often renamed.  \
+///
+/// After compare, the same file (with different path or name) will be in the list_for_trash_files and in the list_for_download.  \
+/// First for every trash line, we search list_for_download for same size and modified.  \
+/// If found, compare content_hash and calculate local_content_hash.  \
+/// If they are equal rename, else nothing: it will be trashed and downloaded eventually.  \
+/// Remove also the lines in files list_for_trash_files and list_for_download.  
+pub fn rename_local_files(
+    ui_tx: std::sync::mpsc::Sender<String>,
+    ext_disk_base_path: &CrossPathBuf,
+    file_list_for_trash_files: &mut FileTxt,
+    file_list_for_download: &mut FileTxt,
+) -> Result<(), DropboxBackupToExternalDiskError> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_trash: Vec<&str> = list_for_trash_files.lines().collect();
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
-    match move_or_rename_local_files_internal_by_hash(ui_tx, ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
+    match rename_local_files_internal_by_hash(ui_tx, ext_disk_base_path, &mut vec_list_for_trash, &mut vec_list_for_download) {
         Ok(()) => {
             // in case all is ok, write actual situation to disk
             file_list_for_trash_files.empty()?;
@@ -249,33 +289,28 @@ pub fn move_or_rename_local_files(
 }
 
 // internal because of catching errors
-fn move_or_rename_local_files_internal_by_name(
+fn move_local_files_internal_by_name(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
-    vec_list_for_trash: &mut Vec<&str>,
+    vec_list_for_trash_files: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
-    let vec_list_for_trash_clone = vec_list_for_trash.clone();
+    let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
     let vec_list_for_download_clone = vec_list_for_download.clone();
     let mut last_send_ms = std::time::Instant::now();
 
     for line_for_trash_files in vec_list_for_trash_clone.iter() {
-        let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
-        let string_path_for_trash_files = vec_line_for_trash[0];
+        let split_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
+        let string_path_for_trash_files = split_line_for_trash[0];
         let path_global_to_trash_files = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
         // if path does not exist ignore, probably it has moved or trashed earlier
         if path_global_to_trash_files.exists() {
-            let modified_for_trash_files = vec_line_for_trash[1];
-            let size_for_trash_files = vec_line_for_trash[2];
-            let file_name_for_trash_files = string_path_for_trash_files
-                .split("/")
-                .collect::<Vec<&str>>()
-                .last()
-                .expect("Bug: file_name_for_trash_files must be splitted and not empty")
-                .to_string();
+            let modified_for_trash_files = split_line_for_trash[1];
+            let size_for_trash_files = split_line_for_trash[2];
+            let file_name_for_trash_files = path_global_to_trash_files.file_name()?;
 
             // search in list_for_download for possible candidates
             // first try exact match with name, date, size because it is fast
@@ -287,25 +322,26 @@ fn move_or_rename_local_files_internal_by_name(
 
                     last_send_ms = std::time::Instant::now();
                 }
-                let vec_line_for_download: Vec<&str> = line_for_download.split("\t").collect();
-                let string_path_for_download = vec_line_for_download[0];
-                let modified_for_download = vec_line_for_download[1];
-                let size_for_download = vec_line_for_download[2];
-                let file_name_for_download = string_path_for_download
-                    .split("/")
-                    .collect::<Vec<&str>>()
-                    .last()
-                    .expect("Bug: file_name_for_download must be splitted and not empty")
-                    .to_string();
+                let split_line_for_download: Vec<&str> = line_for_download.split("\t").collect();
+                let string_path_for_download = split_line_for_download[0];
+                let modified_for_download = split_line_for_download[1];
+                let size_for_download = split_line_for_download[2];
                 let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
+                let file_name_for_download = path_global_to_download.file_name()?;
 
-                if modified_for_trash_files == modified_for_download
+                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                if chrono::Duration::from(modified_for_trash_files - modified_for_download).abs() < chrono::Duration::seconds(2)
                     && size_for_trash_files == size_for_download
                     && file_name_for_trash_files == file_name_for_download
                 {
                     move_internal(&ui_tx, &path_global_to_trash_files, &path_global_to_download)?;
                     // remove the lines from the original mut Vec
-                    vec_list_for_trash.retain(|line| line != line_for_trash_files);
+                    vec_list_for_trash_files.retain(|line| line != line_for_trash_files);
                     vec_list_for_download.retain(|line| line != line_for_download);
 
                     count_moved += 1;
@@ -315,32 +351,32 @@ fn move_or_rename_local_files_internal_by_name(
         }
     }
 
-    println_to_ui_thread(&ui_tx, format!("moved or renamed by name: {}", count_moved));
+    println_to_ui_thread(&ui_tx, format!("moved by name: {}", count_moved));
     Ok(())
 }
 
 // Internal because of catching errors.
-fn move_or_rename_local_files_internal_by_hash(
+fn rename_local_files_internal_by_hash(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
-    vec_list_for_trash: &mut Vec<&str>,
+    vec_list_for_trash_files: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
 ) -> Result<(), DropboxBackupToExternalDiskError> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
-    let vec_list_for_trash_clone = vec_list_for_trash.clone();
+    let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
     let vec_list_for_download_clone = vec_list_for_download.clone();
     let mut last_send_ms = std::time::Instant::now();
 
     for line_for_trash_files in vec_list_for_trash_clone.iter() {
-        let vec_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
-        let string_path_for_trash_files = vec_line_for_trash[0];
+        let split_line_for_trash: Vec<&str> = line_for_trash_files.split("\t").collect();
+        let string_path_for_trash_files = split_line_for_trash[0];
         let path_global_to_trash_files = ext_disk_base_path.join_relative(string_path_for_trash_files)?;
         // if path does not exist ignore, probably it eas moved or trashed earlier
         if path_global_to_trash_files.exists() {
-            let modified_for_trash_files = vec_line_for_trash[1];
-            let size_for_trash_files = vec_line_for_trash[2];
+            let modified_for_trash_files = split_line_for_trash[1];
+            let size_for_trash_files = split_line_for_trash[2];
 
             for line_for_download in vec_list_for_download_clone.iter() {
                 // Every 1 second write a dot, to see it still works like a progress bar
@@ -350,24 +386,32 @@ fn move_or_rename_local_files_internal_by_hash(
 
                     last_send_ms = std::time::Instant::now();
                 }
-                let vec_line_for_download: Vec<&str> = line_for_download.split("\t").collect();
-                let string_path_for_download = vec_line_for_download[0];
-                let modified_for_download = vec_line_for_download[1];
-                let size_for_download = vec_line_for_download[2];
+                let split_line_for_download: Vec<&str> = line_for_download.split("\t").collect();
+                let string_path_for_download = split_line_for_download[0];
+                let modified_for_download = split_line_for_download[1];
+                let size_for_download = split_line_for_download[2];
+                let remote_content_hash = split_line_for_download[3];
                 let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
 
-                if modified_for_trash_files == modified_for_download && size_for_trash_files == size_for_download {
+                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)
+                    .expect("Bug: datetime must be correct")
+                    .into();
+                if chrono::Duration::from(modified_for_trash_files - modified_for_download).abs() < chrono::Duration::seconds(2)
+                    && size_for_trash_files == size_for_download
+                {
                     // same size and date. Let's check the content_hash to be sure.
                     let local_content_hash = format!(
                         "{:x}",
                         DropboxContentHasher::hash_file(path_global_to_trash_files.to_path_buf_current_os())?
                     );
-                    let remote_content_hash = get_content_hash(string_path_for_download)?;
 
                     if local_content_hash == remote_content_hash {
                         move_internal(&ui_tx, &path_global_to_trash_files, &path_global_to_download)?;
                         // remove the lines from the original mut Vec
-                        vec_list_for_trash.retain(|line| line != line_for_trash_files);
+                        vec_list_for_trash_files.retain(|line| line != line_for_trash_files);
                         vec_list_for_download.retain(|line| line != line_for_download);
                         count_moved += 1;
                         break;
@@ -377,7 +421,7 @@ fn move_or_rename_local_files_internal_by_hash(
         }
     }
 
-    println_to_ui_thread(&ui_tx, format!("moved or renamed: {}", count_moved));
+    println_to_ui_thread(&ui_tx, format!("Renamed: {}", count_moved));
     Ok(())
 }
 
@@ -413,12 +457,6 @@ fn move_internal(
     }
     std::fs::rename(move_from.to_path_buf_current_os(), move_to.to_path_buf_current_os())?;
     Ok(())
-}
-
-fn get_content_hash(path_for_download: &str) -> Result<String, DropboxBackupToExternalDiskError> {
-    let token = crate::remote_dropbox_mod::get_authorization_token()?;
-    let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
-    Ok(crate::remote_dropbox_mod::remote_content_hash(path_for_download, &client).expect("Bug: dropbox metadata must have hash."))
 }
 
 /// Move to trash folder the files from list_for_trash_files.  \

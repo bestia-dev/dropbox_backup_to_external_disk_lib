@@ -6,7 +6,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **Library project, one way sync from Dropbox to external disc**  
-***version: 2.1.125 date: 2025-09-25 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
+***version: 2.1.126 date: 2025-09-26 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
 
  ![dropbox](https://img.shields.io/badge/dropbox-orange)
  ![maintained](https://img.shields.io/badge/maintained-green)
@@ -15,9 +15,9 @@
 [//]: # (auto_cargo_toml_to_md end)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1496-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-117-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-198-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1532-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-123-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-200-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
@@ -56,8 +56,8 @@ This is just a library project. There are projects for different user-interfaces
 
 Then I use WSL2 (Debian) on Win10 to execute the compiled program.  
 The external disk path from WSL2 looks like this: `/mnt/d/DropBoxBackup1`.  
-The CLI saves the list of the local files metadata in `tmp/temp_data/list_destination_files.csv`.  
-And the list of the files metadata from the remote Dropbox to in `tmp/temp_data/list_source_files.csv`.
+The CLI saves the list of the local files metadata in `tmp/list_destination_files.csv`.  
+And the list of the files metadata from the remote Dropbox to in `tmp/list_source_files.csv`.
 Tab delimited with metadata: path (with name), datetime modified, size.
 The remote path is not really case-sensitive. They try to make it case-preserve, but this apply only to the last part of the path. Before that it is random-case.
 For big dropbox remotes it can take a while to complete. After the first level folders are listed, I use 3 threads in a ThreadPool to get sub-folders recursively in parallel. It makes it much faster. Also the download of files is in parallel on multiple threads.  
@@ -67,7 +67,8 @@ Once the lists are complete the CLI will compare them and create files:
 `list_for_download.csv`  
 `list_for_trash_files.csv`  
 With this files the CLI will:  
-`move_or_rename_local_files` if (name, size and file date) are equal, or (size, date and content_hash)
+`move_local_files` if (name, size and file date) are equal
+`rename_local_files` if (size, date and content_hash) are equal
 `trash_files` will move the obsolete files into a trash folder  
 `download_from_list` - this can take a lot of time and it can be stopped with ctrl+c
 

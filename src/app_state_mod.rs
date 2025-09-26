@@ -11,12 +11,13 @@ pub struct AppConfig {
     pub path_list_destination_files: CrossPathBuf,
     pub path_list_source_folders: CrossPathBuf,
     pub path_list_destination_folders: CrossPathBuf,
-    pub path_list_destination_readonly_files: CrossPathBuf,
+    pub path_list_readonly_files: CrossPathBuf,
     pub path_list_for_download: CrossPathBuf,
     pub path_list_for_trash_files: CrossPathBuf,
     pub path_list_just_downloaded: CrossPathBuf,
     pub path_list_for_trash_folders: CrossPathBuf,
     pub path_list_for_create_folders: CrossPathBuf,
+    pub path_list_for_change_time_files: CrossPathBuf,
 }
 
 /// This trait defines what functions must the bin project implement then the lib project can use them.  \
