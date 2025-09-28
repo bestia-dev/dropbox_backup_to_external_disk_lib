@@ -51,70 +51,70 @@
 <a href=#51 id=51 data-nosnippet>51</a></span><span class="kw">pub fn </span>get_authorization_token() -&gt; <span class="prelude-ty">Result</span>&lt;dropbox_sdk::oauth2::Authorization&gt; {
 <a href=#52 id=52 data-nosnippet>52</a>    <span class="kw">let </span>client_id = <span class="kw">crate</span>::dropbox_api_token_with_oauth2_mod::DROPBOX_API_CONFIG
 <a href=#53 id=53 data-nosnippet>53</a>        .get()
-<a href=#54 id=54 data-nosnippet>54</a>        .unwrap()
-<a href=#55 id=55 data-nosnippet>55</a>        .client_id
+<a href=#54 id=54 data-nosnippet>54</a>        .ok_or_else(|| Error::ErrorFromStr(<span class="string">"DROPBOX_API_CONFIG.get error"</span>))<span class="question-mark">?
+<a href=#55 id=55 data-nosnippet>55</a>        </span>.client_id
 <a href=#56 id=56 data-nosnippet>56</a>        .to_string();
 <a href=#57 id=57 data-nosnippet>57</a>    <span class="kw">let </span>first_token = <span class="kw">crate</span>::dropbox_api_token_with_oauth2_mod::get_dropbox_secret_token(<span class="kw-2">&amp;</span>client_id)<span class="question-mark">?</span>;
 <a href=#58 id=58 data-nosnippet>58</a>    <span class="comment">// The special prefix 1&amp; in Authorization::load() means that the rest of the parameter is the token
-<a href=#59 id=59 data-nosnippet>59</a>    </span><span class="kw">let </span>access_token = dropbox_sdk::oauth2::Authorization::load(client_id, <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"1&amp;{}"</span>, first_token.expose_secret())).unwrap();
-<a href=#60 id=60 data-nosnippet>60</a>    <span class="prelude-val">Ok</span>(access_token)
-<a href=#61 id=61 data-nosnippet>61</a>}
-<a href=#62 id=62 data-nosnippet>62</a>
-<a href=#63 id=63 data-nosnippet>63</a><span class="doccomment">/// Get remote list in parallel.  \
-<a href=#64 id=64 data-nosnippet>64</a>///
-<a href=#65 id=65 data-nosnippet>65</a>/// First get the first level of folders and then request in parallel sub-folders recursively.  
-<a href=#66 id=66 data-nosnippet>66</a></span><span class="kw">pub fn </span>list_remote(
-<a href=#67 id=67 data-nosnippet>67</a>    ui_tx: std::sync::mpsc::Sender&lt;(String, ThreadName)&gt;,
-<a href=#68 id=68 data-nosnippet>68</a>    <span class="kw-2">mut </span>file_list_source_files: FileTxt,
-<a href=#69 id=69 data-nosnippet>69</a>    <span class="kw-2">mut </span>file_list_source_folders: FileTxt,
-<a href=#70 id=70 data-nosnippet>70</a>) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#71 id=71 data-nosnippet>71</a>    <span class="kw">let </span>list_remote_start = std::time::Instant::now();
-<a href=#72 id=72 data-nosnippet>72</a>    <span class="comment">// empty the files. I want all or nothing result here if the process is terminated prematurely.
-<a href=#73 id=73 data-nosnippet>73</a>    </span>file_list_source_files.empty()<span class="question-mark">?</span>;
-<a href=#74 id=74 data-nosnippet>74</a>    file_list_source_folders.empty()<span class="question-mark">?</span>;
-<a href=#75 id=75 data-nosnippet>75</a>
-<a href=#76 id=76 data-nosnippet>76</a>    <span class="kw">let </span>token = get_authorization_token()<span class="question-mark">?</span>;
-<a href=#77 id=77 data-nosnippet>77</a>    <span class="kw">let </span>client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token.clone());
-<a href=#78 id=78 data-nosnippet>78</a>    <span class="kw">let </span>client_ref = <span class="kw-2">&amp;</span>client;
-<a href=#79 id=79 data-nosnippet>79</a>    <span class="comment">// walkdir non-recursive for the first level of folders
-<a href=#80 id=80 data-nosnippet>80</a>    </span><span class="kw">let </span>(folder_list_root, file_list_root) = list_remote_folder(<span class="kw-2">&amp;</span>client, <span class="string">"/"</span>, <span class="number">0</span>, <span class="bool-val">false</span>, ui_tx.clone())<span class="question-mark">?</span>;
-<a href=#81 id=81 data-nosnippet>81</a>
-<a href=#82 id=82 data-nosnippet>82</a>    <span class="comment">// threadpool with 8 threads
-<a href=#83 id=83 data-nosnippet>83</a>    </span><span class="kw">let </span>pool = rayon::ThreadPoolBuilder::new()
-<a href=#84 id=84 data-nosnippet>84</a>        .num_threads(<span class="number">8</span>)
-<a href=#85 id=85 data-nosnippet>85</a>        .build()
-<a href=#86 id=86 data-nosnippet>86</a>        .expect(<span class="string">"Bug: rayon ThreadPoolBuilder"</span>);
-<a href=#87 id=87 data-nosnippet>87</a>    pool.scope({
-<a href=#88 id=88 data-nosnippet>88</a>        <span class="comment">// Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
-<a href=#89 id=89 data-nosnippet>89</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>folder_list_all = <span class="macro">vec!</span>[];
-<a href=#90 id=90 data-nosnippet>90</a>        <span class="kw">let </span><span class="kw-2">mut </span>file_list_all = file_list_root;
-<a href=#91 id=91 data-nosnippet>91</a>        <span class="comment">// channel for inter-thread communication to send folder/files lists
-<a href=#92 id=92 data-nosnippet>92</a>        </span><span class="kw">let </span>(list_tx, list_rx) = std::sync::mpsc::channel();
-<a href=#93 id=93 data-nosnippet>93</a>        <span class="comment">// only the closure is actually spawned, because it is the return value of the block
-<a href=#94 id=94 data-nosnippet>94</a>        </span><span class="kw">move </span>|scoped| {
-<a href=#95 id=95 data-nosnippet>95</a>            <span class="comment">// these folders will request walkdir recursive in parallel
-<a href=#96 id=96 data-nosnippet>96</a>            // loop in a new thread, so the send msg will come immediately
-<a href=#97 id=97 data-nosnippet>97</a>            </span><span class="kw">for </span>folder_path <span class="kw">in </span>folder_list_root.iter() {
-<a href=#98 id=98 data-nosnippet>98</a>                <span class="comment">// I store paths without leading slash, but it needs it for the API call.
-<a href=#99 id=99 data-nosnippet>99</a>                </span><span class="kw">let </span>folder_path = <span class="macro">format!</span>(<span class="string">"/{folder_path}"</span>);
-<a href=#100 id=100 data-nosnippet>100</a>                <span class="comment">// execute in a separate threads, or waits for a free thread from the pool
-<a href=#101 id=101 data-nosnippet>101</a>                // scoped.spawn closure cannot return a Result&lt;&gt;, but it can send it as inter-thread message
-<a href=#102 id=102 data-nosnippet>102</a>                </span>scoped.spawn({
-<a href=#103 id=103 data-nosnippet>103</a>                    <span class="comment">// Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
-<a href=#104 id=104 data-nosnippet>104</a>                    // We are in a loop here. It means for every round we need new clones to move/capture/consume.
-<a href=#105 id=105 data-nosnippet>105</a>                    </span><span class="kw">let </span>folder_path = folder_path.clone();
-<a href=#106 id=106 data-nosnippet>106</a>                    <span class="kw">let </span>ui_tx_move_to_closure = ui_tx.clone();
-<a href=#107 id=107 data-nosnippet>107</a>                    <span class="kw">let </span>ui_tx_move_to_closure_2 = ui_tx.clone();
-<a href=#108 id=108 data-nosnippet>108</a>                    <span class="kw">let </span>list_tx_move_to_closure = list_tx.clone();
-<a href=#109 id=109 data-nosnippet>109</a>                    <span class="comment">// only the closure is actually spawned, because it is the return value of the block
-<a href=#110 id=110 data-nosnippet>110</a>                    </span><span class="kw">move </span>|<span class="kw">_</span>| {
-<a href=#111 id=111 data-nosnippet>111</a>                        <span class="kw">let </span>thread_num = rayon::current_thread_index().expect(<span class="string">"Bug: rayon current_thread_index"</span>) <span class="kw">as </span>ThreadNum;
+<a href=#59 id=59 data-nosnippet>59</a>    </span><span class="kw">let </span>access_token = dropbox_sdk::oauth2::Authorization::load(client_id, <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"1&amp;{}"</span>, first_token.expose_secret()))
+<a href=#60 id=60 data-nosnippet>60</a>        .ok_or_else(|| Error::ErrorFromStr(<span class="string">"Authorization::load error"</span>))<span class="question-mark">?</span>;
+<a href=#61 id=61 data-nosnippet>61</a>    <span class="prelude-val">Ok</span>(access_token)
+<a href=#62 id=62 data-nosnippet>62</a>}
+<a href=#63 id=63 data-nosnippet>63</a>
+<a href=#64 id=64 data-nosnippet>64</a><span class="doccomment">/// Get remote list in parallel.  \
+<a href=#65 id=65 data-nosnippet>65</a>///
+<a href=#66 id=66 data-nosnippet>66</a>/// First get the first level of folders and then request in parallel sub-folders recursively.  
+<a href=#67 id=67 data-nosnippet>67</a></span><span class="kw">pub fn </span>list_remote(
+<a href=#68 id=68 data-nosnippet>68</a>    ui_tx: std::sync::mpsc::Sender&lt;(String, ThreadName)&gt;,
+<a href=#69 id=69 data-nosnippet>69</a>    <span class="kw-2">mut </span>file_list_source_files: FileTxt,
+<a href=#70 id=70 data-nosnippet>70</a>    <span class="kw-2">mut </span>file_list_source_folders: FileTxt,
+<a href=#71 id=71 data-nosnippet>71</a>) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#72 id=72 data-nosnippet>72</a>    <span class="kw">let </span>list_remote_start = std::time::Instant::now();
+<a href=#73 id=73 data-nosnippet>73</a>    <span class="comment">// empty the files. I want all or nothing result here if the process is terminated prematurely.
+<a href=#74 id=74 data-nosnippet>74</a>    </span>file_list_source_files.empty()<span class="question-mark">?</span>;
+<a href=#75 id=75 data-nosnippet>75</a>    file_list_source_folders.empty()<span class="question-mark">?</span>;
+<a href=#76 id=76 data-nosnippet>76</a>
+<a href=#77 id=77 data-nosnippet>77</a>    <span class="kw">let </span>token = get_authorization_token()<span class="question-mark">?</span>;
+<a href=#78 id=78 data-nosnippet>78</a>    <span class="kw">let </span>client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token.clone());
+<a href=#79 id=79 data-nosnippet>79</a>    <span class="kw">let </span>client_ref = <span class="kw-2">&amp;</span>client;
+<a href=#80 id=80 data-nosnippet>80</a>    <span class="comment">// walkdir non-recursive for the first level of folders
+<a href=#81 id=81 data-nosnippet>81</a>    </span><span class="kw">let </span>(folder_list_root, file_list_root) = list_remote_folder(<span class="kw-2">&amp;</span>client, <span class="string">"/"</span>, <span class="number">0</span>, <span class="bool-val">false</span>, ui_tx.clone())<span class="question-mark">?</span>;
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a>    <span class="comment">// threadpool with 8 threads
+<a href=#84 id=84 data-nosnippet>84</a>    </span><span class="kw">let </span>pool = rayon::ThreadPoolBuilder::new().num_threads(<span class="number">8</span>).build()<span class="question-mark">?</span>;
+<a href=#85 id=85 data-nosnippet>85</a>    pool.scope({
+<a href=#86 id=86 data-nosnippet>86</a>        <span class="comment">// Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
+<a href=#87 id=87 data-nosnippet>87</a>        </span><span class="kw">let </span><span class="kw-2">mut </span>folder_list_all = <span class="macro">vec!</span>[];
+<a href=#88 id=88 data-nosnippet>88</a>        <span class="kw">let </span><span class="kw-2">mut </span>file_list_all = file_list_root;
+<a href=#89 id=89 data-nosnippet>89</a>        <span class="comment">// channel for inter-thread communication to send folder/files lists
+<a href=#90 id=90 data-nosnippet>90</a>        </span><span class="kw">let </span>(list_tx, list_rx) = std::sync::mpsc::channel();
+<a href=#91 id=91 data-nosnippet>91</a>        <span class="comment">// only the closure is actually spawned, because it is the return value of the block
+<a href=#92 id=92 data-nosnippet>92</a>        </span><span class="kw">move </span>|scoped| {
+<a href=#93 id=93 data-nosnippet>93</a>            <span class="comment">// these folders will request walkdir recursive in parallel
+<a href=#94 id=94 data-nosnippet>94</a>            // loop in a new thread, so the send msg will come immediately
+<a href=#95 id=95 data-nosnippet>95</a>            </span><span class="kw">for </span>folder_path <span class="kw">in </span>folder_list_root.iter() {
+<a href=#96 id=96 data-nosnippet>96</a>                <span class="comment">// I store paths without leading slash, but it needs it for the API call.
+<a href=#97 id=97 data-nosnippet>97</a>                </span><span class="kw">let </span>folder_path = <span class="macro">format!</span>(<span class="string">"/{folder_path}"</span>);
+<a href=#98 id=98 data-nosnippet>98</a>                <span class="comment">// execute in a separate threads, or waits for a free thread from the pool
+<a href=#99 id=99 data-nosnippet>99</a>                // scoped.spawn closure cannot return a Result&lt;&gt;, but it can send it as inter-thread message
+<a href=#100 id=100 data-nosnippet>100</a>                </span>scoped.spawn({
+<a href=#101 id=101 data-nosnippet>101</a>                    <span class="comment">// Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
+<a href=#102 id=102 data-nosnippet>102</a>                    // We are in a loop here. It means for every round we need new clones to move/capture/consume.
+<a href=#103 id=103 data-nosnippet>103</a>                    </span><span class="kw">let </span>folder_path = folder_path.clone();
+<a href=#104 id=104 data-nosnippet>104</a>                    <span class="kw">let </span>ui_tx_move_to_closure = ui_tx.clone();
+<a href=#105 id=105 data-nosnippet>105</a>                    <span class="kw">let </span>ui_tx_move_to_closure_2 = ui_tx.clone();
+<a href=#106 id=106 data-nosnippet>106</a>                    <span class="kw">let </span>list_tx_move_to_closure = list_tx.clone();
+<a href=#107 id=107 data-nosnippet>107</a>                    <span class="comment">// only the closure is actually spawned, because it is the return value of the block
+<a href=#108 id=108 data-nosnippet>108</a>                    </span><span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#109 id=109 data-nosnippet>109</a>                        <span class="kw">let </span>thread_num = rayon::current_thread_index()
+<a href=#110 id=110 data-nosnippet>110</a>                            .expect(<span class="string">"Inside closure cannot use ?. Bug: rayon current_thread_index"</span>)
+<a href=#111 id=111 data-nosnippet>111</a>                            <span class="kw">as </span>ThreadNum;
 <a href=#112 id=112 data-nosnippet>112</a>                        <span class="comment">// catch propagated errors and communicate errors to user or developer
 <a href=#113 id=113 data-nosnippet>113</a>                        // spawned closure cannot propagate error with ?
 <a href=#114 id=114 data-nosnippet>114</a>                        </span><span class="kw">match </span>list_remote_folder(client_ref, <span class="kw-2">&amp;</span>folder_path, thread_num, <span class="bool-val">true</span>, ui_tx_move_to_closure) {
-<a href=#115 id=115 data-nosnippet>115</a>                            <span class="prelude-val">Ok</span>(folder_list_and_file_list) =&gt; {
-<a href=#116 id=116 data-nosnippet>116</a>                                list_tx_move_to_closure.send(folder_list_and_file_list).expect(<span class="string">"Bug: mpsc send"</span>)
-<a href=#117 id=117 data-nosnippet>117</a>                            }
+<a href=#115 id=115 data-nosnippet>115</a>                            <span class="prelude-val">Ok</span>(folder_list_and_file_list) =&gt; list_tx_move_to_closure
+<a href=#116 id=116 data-nosnippet>116</a>                                .send(folder_list_and_file_list)
+<a href=#117 id=117 data-nosnippet>117</a>                                .expect(<span class="string">"Inside closure cannot use ?. Bug: mpsc send"</span>),
 <a href=#118 id=118 data-nosnippet>118</a>                            <span class="prelude-val">Err</span>(err) =&gt; println_to_ui_thread_with_thread_name(
 <a href=#119 id=119 data-nosnippet>119</a>                                <span class="kw-2">&amp;</span>ui_tx_move_to_closure_2,
 <a href=#120 id=120 data-nosnippet>120</a>                                <span class="macro">format!</span>(<span class="string">"Error in thread {err}"</span>),
@@ -140,13 +140,13 @@
 <a href=#140 id=140 data-nosnippet>140</a>            <span class="kw">let </span>string_folder_list = <span class="kw">crate</span>::utils_mod::sort_list(folder_list_all);
 <a href=#141 id=141 data-nosnippet>141</a>            file_list_source_folders
 <a href=#142 id=142 data-nosnippet>142</a>                .write_append_str(<span class="kw-2">&amp;</span>string_folder_list)
-<a href=#143 id=143 data-nosnippet>143</a>                .expect(<span class="string">"Bug: file_list_source_folders must be writable"</span>);
+<a href=#143 id=143 data-nosnippet>143</a>                .expect(<span class="string">"Inside closure cannot use ?. Bug: file_list_source_folders must be writable"</span>);
 <a href=#144 id=144 data-nosnippet>144</a>
 <a href=#145 id=145 data-nosnippet>145</a>            println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, <span class="macro">format!</span>(<span class="string">"Remote file count: {all_file_count}"</span>), <span class="string">"R"</span>);
 <a href=#146 id=146 data-nosnippet>146</a>            <span class="kw">let </span>string_file_list = <span class="kw">crate</span>::utils_mod::sort_list(file_list_all);
 <a href=#147 id=147 data-nosnippet>147</a>            file_list_source_files
 <a href=#148 id=148 data-nosnippet>148</a>                .write_append_str(<span class="kw-2">&amp;</span>string_file_list)
-<a href=#149 id=149 data-nosnippet>149</a>                .expect(<span class="string">"Bug: file_list_source_files must be writable"</span>);
+<a href=#149 id=149 data-nosnippet>149</a>                .expect(<span class="string">"Inside closure cannot use ?. Bug: file_list_source_files must be writable"</span>);
 <a href=#150 id=150 data-nosnippet>150</a>
 <a href=#151 id=151 data-nosnippet>151</a>            println_to_ui_thread_with_thread_name(
 <a href=#152 id=152 data-nosnippet>152</a>                <span class="kw-2">&amp;</span>ui_tx,
@@ -183,7 +183,7 @@
 <a href=#183 id=183 data-nosnippet>183</a>                        </span><span class="kw">if </span>last_send_ms.elapsed().as_millis() &gt;= <span class="number">100 </span>{
 <a href=#184 id=184 data-nosnippet>184</a>                            println_to_ui_thread_with_thread_name(
 <a href=#185 id=185 data-nosnippet>185</a>                                <span class="kw-2">&amp;</span>ui_tx,
-<a href=#186 id=186 data-nosnippet>186</a>                                <span class="macro">format!</span>(<span class="string">"Folder: {}"</span>, <span class="kw">crate</span>::shorten_string(folder_path, <span class="number">80</span>)),
+<a href=#186 id=186 data-nosnippet>186</a>                                <span class="macro">format!</span>(<span class="string">"Folder: {}"</span>, <span class="kw">crate</span>::shorten_string(folder_path, <span class="number">80</span>)<span class="question-mark">?</span>),
 <a href=#187 id=187 data-nosnippet>187</a>                                <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>),
 <a href=#188 id=188 data-nosnippet>188</a>                            );
 <a href=#189 id=189 data-nosnippet>189</a>                            last_send_ms = std::time::Instant::now();
@@ -201,7 +201,7 @@
 <a href=#201 id=201 data-nosnippet>201</a>                            </span><span class="kw">if </span>last_send_ms.elapsed().as_millis() &gt;= <span class="number">100 </span>{
 <a href=#202 id=202 data-nosnippet>202</a>                                println_to_ui_thread_with_thread_name(
 <a href=#203 id=203 data-nosnippet>203</a>                                    <span class="kw-2">&amp;</span>ui_tx,
-<a href=#204 id=204 data-nosnippet>204</a>                                    <span class="macro">format!</span>(<span class="string">"File: {}"</span>, <span class="kw">crate</span>::shorten_string(file_path, <span class="number">80</span>)),
+<a href=#204 id=204 data-nosnippet>204</a>                                    <span class="macro">format!</span>(<span class="string">"File: {}"</span>, <span class="kw">crate</span>::shorten_string(file_path, <span class="number">80</span>)<span class="question-mark">?</span>),
 <a href=#205 id=205 data-nosnippet>205</a>                                    <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>),
 <a href=#206 id=206 data-nosnippet>206</a>                                );
 <a href=#207 id=207 data-nosnippet>207</a>                                last_send_ms = std::time::Instant::now();
@@ -211,8 +211,8 @@
 <a href=#211 id=211 data-nosnippet>211</a>                                file_path,
 <a href=#212 id=212 data-nosnippet>212</a>                                entry.client_modified,
 <a href=#213 id=213 data-nosnippet>213</a>                                entry.size,
-<a href=#214 id=214 data-nosnippet>214</a>                                entry.content_hash.unwrap()
-<a href=#215 id=215 data-nosnippet>215</a>                            ));
+<a href=#214 id=214 data-nosnippet>214</a>                                entry.content_hash.ok_or_else(|| Error::ErrorFromStr(<span class="string">"entry.content_hash None"</span>))<span class="question-mark">?
+<a href=#215 id=215 data-nosnippet>215</a>                            </span>));
 <a href=#216 id=216 data-nosnippet>216</a>                        }
 <a href=#217 id=217 data-nosnippet>217</a>                    }
 <a href=#218 id=218 data-nosnippet>218</a>                    <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(dropbox_sdk::files::Metadata::Deleted(_entry))) =&gt; {
@@ -361,186 +361,187 @@
 <a href=#361 id=361 data-nosnippet>361</a>    <span class="comment">// channel for inter-thread communication to send messages that will be appended to files
 <a href=#362 id=362 data-nosnippet>362</a>    </span><span class="kw">let </span>(files_append_tx, files_append_rx) = std::sync::mpsc::channel();
 <a href=#363 id=363 data-nosnippet>363</a>    <span class="comment">//8 threads to download in parallel
-<a href=#364 id=364 data-nosnippet>364</a>    </span><span class="kw">let </span>pool = rayon::ThreadPoolBuilder::new().num_threads(<span class="number">8</span>).build().unwrap();
+<a href=#364 id=364 data-nosnippet>364</a>    </span><span class="kw">let </span>pool = rayon::ThreadPoolBuilder::new().num_threads(<span class="number">8</span>).build()<span class="question-mark">?</span>;
 <a href=#365 id=365 data-nosnippet>365</a>    pool.scope(<span class="kw">move </span>|scoped| {
 <a href=#366 id=366 data-nosnippet>366</a>        <span class="kw">for </span>line_path_to_download <span class="kw">in </span>vec_list_for_download.iter() {
 <a href=#367 id=367 data-nosnippet>367</a>            <span class="comment">// execute in 4 separate threads, or waits for a free thread from the pool
 <a href=#368 id=368 data-nosnippet>368</a>            </span>scoped.spawn({
 <a href=#369 id=369 data-nosnippet>369</a>                <span class="comment">// Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
 <a href=#370 id=370 data-nosnippet>370</a>                </span><span class="kw">let </span>line: Vec&lt;<span class="kw-2">&amp;</span>str&gt; = line_path_to_download.split(<span class="string">"\t"</span>).collect();
-<a href=#371 id=371 data-nosnippet>371</a>                <span class="kw">let </span>path_to_download = CrossPathBuf::new(line[<span class="number">0</span>]).expect(<span class="string">"Error handling inside closures is not good."</span>);
-<a href=#372 id=372 data-nosnippet>372</a>                <span class="kw">let </span>ui_tx_clone = ui_tx.clone();
-<a href=#373 id=373 data-nosnippet>373</a>                <span class="kw">let </span>ui_tx_move_to_closure_2 = ui_tx.clone();
-<a href=#374 id=374 data-nosnippet>374</a>                <span class="kw">let </span>files_append_tx_move_to_closure = files_append_tx.clone();
-<a href=#375 id=375 data-nosnippet>375</a>                <span class="comment">// only the closure is actually spawned, because it is the return value of the block
-<a href=#376 id=376 data-nosnippet>376</a>                </span><span class="kw">move </span>|<span class="kw">_</span>| {
-<a href=#377 id=377 data-nosnippet>377</a>                    <span class="kw">let </span>thread_num = rayon::current_thread_index().expect(<span class="string">"Bug: thread num must exist."</span>);
-<a href=#378 id=378 data-nosnippet>378</a>                    <span class="comment">// catch propagated errors and communicate errors to user or developer
-<a href=#379 id=379 data-nosnippet>379</a>                    // spawned closure cannot propagate error with ?
-<a href=#380 id=380 data-nosnippet>380</a>                    </span><span class="kw">match </span>download_internal(
-<a href=#381 id=381 data-nosnippet>381</a>                        ui_tx_clone,
-<a href=#382 id=382 data-nosnippet>382</a>                        ext_disk_base_path,
-<a href=#383 id=383 data-nosnippet>383</a>                        client_ref,
-<a href=#384 id=384 data-nosnippet>384</a>                        thread_num <span class="kw">as </span>i32,
-<a href=#385 id=385 data-nosnippet>385</a>                        <span class="kw-2">&amp;</span>path_to_download,
-<a href=#386 id=386 data-nosnippet>386</a>                        files_append_tx_move_to_closure,
-<a href=#387 id=387 data-nosnippet>387</a>                    ) {
-<a href=#388 id=388 data-nosnippet>388</a>                        <span class="prelude-val">Ok</span>(()) =&gt; {}
-<a href=#389 id=389 data-nosnippet>389</a>                        <span class="prelude-val">Err</span>(err) =&gt; println_to_ui_thread_with_thread_name(
-<a href=#390 id=390 data-nosnippet>390</a>                            <span class="kw-2">&amp;</span>ui_tx_move_to_closure_2,
-<a href=#391 id=391 data-nosnippet>391</a>                            <span class="macro">format!</span>(<span class="string">"Error in thread {err}"</span>),
-<a href=#392 id=392 data-nosnippet>392</a>                            <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>),
-<a href=#393 id=393 data-nosnippet>393</a>                        ),
-<a href=#394 id=394 data-nosnippet>394</a>                    }
-<a href=#395 id=395 data-nosnippet>395</a>                }
-<a href=#396 id=396 data-nosnippet>396</a>            });
-<a href=#397 id=397 data-nosnippet>397</a>        }
-<a href=#398 id=398 data-nosnippet>398</a>
-<a href=#399 id=399 data-nosnippet>399</a>        <span class="comment">// region: Receiver reads all msgs from the queue
-<a href=#400 id=400 data-nosnippet>400</a>        // and them appends it neatly in files. Because only this thread writes to files there cannot be data race condition.
-<a href=#401 id=401 data-nosnippet>401</a>        </span>drop(files_append_tx);
-<a href=#402 id=402 data-nosnippet>402</a>        <span class="kw">for </span>just_downloaded <span class="kw">in </span><span class="kw-2">&amp;</span>files_append_rx {
-<a href=#403 id=403 data-nosnippet>403</a>            <span class="kw">if </span>!just_downloaded.is_empty() {
-<a href=#404 id=404 data-nosnippet>404</a>                file_list_just_downloaded
-<a href=#405 id=405 data-nosnippet>405</a>                    .write_append_str(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"{just_downloaded}\n"</span>))
-<a href=#406 id=406 data-nosnippet>406</a>                    .expect(<span class="string">"Bug: file_list_just_downloaded must be writable."</span>);
-<a href=#407 id=407 data-nosnippet>407</a>            }
-<a href=#408 id=408 data-nosnippet>408</a>        }
-<a href=#409 id=409 data-nosnippet>409</a>        <span class="comment">// endregion: Receiver reads all msgs from the queue
-<a href=#410 id=410 data-nosnippet>410</a>    </span>});
-<a href=#411 id=411 data-nosnippet>411</a>
-<a href=#412 id=412 data-nosnippet>412</a>    <span class="prelude-val">Ok</span>(())
-<a href=#413 id=413 data-nosnippet>413</a>}
-<a href=#414 id=414 data-nosnippet>414</a>
-<a href=#415 id=415 data-nosnippet>415</a><span class="doccomment">/// Download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient.
-<a href=#416 id=416 data-nosnippet>416</a></span><span class="kw">fn </span>download_internal(
-<a href=#417 id=417 data-nosnippet>417</a>    ui_tx: std::sync::mpsc::Sender&lt;(String, ThreadName)&gt;,
-<a href=#418 id=418 data-nosnippet>418</a>    ext_disk_base_path: <span class="kw-2">&amp;</span>CrossPathBuf,
-<a href=#419 id=419 data-nosnippet>419</a>    client: <span class="kw-2">&amp;</span>dropbox_sdk::default_client::UserAuthDefaultClient,
-<a href=#420 id=420 data-nosnippet>420</a>    thread_num: i32,
-<a href=#421 id=421 data-nosnippet>421</a>    path_to_download: <span class="kw-2">&amp;</span>CrossPathBuf,
-<a href=#422 id=422 data-nosnippet>422</a>    files_append_tx: std::sync::mpsc::Sender&lt;String&gt;,
-<a href=#423 id=423 data-nosnippet>423</a>) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
-<a href=#424 id=424 data-nosnippet>424</a>    <span class="kw">let </span>thread_name = <span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>);
-<a href=#425 id=425 data-nosnippet>425</a>    <span class="comment">// add a leading slash to path_to_download because the dropbox_sdk needs it
-<a href=#426 id=426 data-nosnippet>426</a>    </span><span class="kw">let </span>path_to_download = path_to_download.add_start_slash()<span class="question-mark">?</span>;
-<a href=#427 id=427 data-nosnippet>427</a>    <span class="kw">let </span>local_path = ext_disk_base_path.join_relative(path_to_download.as_str())<span class="question-mark">?</span>;
-<a href=#428 id=428 data-nosnippet>428</a>    local_path.create_dir_all_for_file()<span class="question-mark">?</span>;
-<a href=#429 id=429 data-nosnippet>429</a>    <span class="kw">let </span>modified_str;
-<a href=#430 id=430 data-nosnippet>430</a>    <span class="kw">let </span>metadata_size;
-<a href=#431 id=431 data-nosnippet>431</a>    <span class="kw">let </span><span class="kw-2">mut </span>just_downloaded = String::new();
-<a href=#432 id=432 data-nosnippet>432</a>
-<a href=#433 id=433 data-nosnippet>433</a>    <span class="comment">// get datetime from remote
-<a href=#434 id=434 data-nosnippet>434</a>
-<a href=#435 id=435 data-nosnippet>435</a>    </span><span class="kw">let </span>get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string());
-<a href=#436 id=436 data-nosnippet>436</a>    <span class="kw">let </span>metadata = (dropbox_sdk::files::get_metadata(client, <span class="kw-2">&amp;</span>get_metadata_arg)<span class="question-mark">?</span>)<span class="question-mark">?</span>;
-<a href=#437 id=437 data-nosnippet>437</a>    <span class="kw">match </span>metadata {
-<a href=#438 id=438 data-nosnippet>438</a>        dropbox_sdk::files::Metadata::File(metadata) =&gt; {
-<a href=#439 id=439 data-nosnippet>439</a>            modified_str = metadata.client_modified;
-<a href=#440 id=440 data-nosnippet>440</a>            metadata_size = metadata.size;
-<a href=#441 id=441 data-nosnippet>441</a>        }
-<a href=#442 id=442 data-nosnippet>442</a>        <span class="kw">_ </span>=&gt; {
-<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorFromStr(<span class="string">"This is not a file on Dropbox"</span>));
-<a href=#444 id=444 data-nosnippet>444</a>        }
-<a href=#445 id=445 data-nosnippet>445</a>    }
-<a href=#446 id=446 data-nosnippet>446</a>
-<a href=#447 id=447 data-nosnippet>447</a>    <span class="kw">let </span>system_time_modified = humantime::parse_rfc3339(<span class="kw-2">&amp;</span>modified_str).expect(<span class="string">"Bug: parse_rfc3339 must succeed"</span>);
-<a href=#448 id=448 data-nosnippet>448</a>    <span class="comment">// let modified = filetime::FileTime::from_system_time(system_time_modified);
-<a href=#449 id=449 data-nosnippet>449</a>
-<a href=#450 id=450 data-nosnippet>450</a>    // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
-<a href=#451 id=451 data-nosnippet>451</a>    </span><span class="kw">if </span>metadata_size == <span class="number">0 </span>{
-<a href=#452 id=452 data-nosnippet>452</a>        <span class="kw">if </span>local_path.exists() {
-<a href=#453 id=453 data-nosnippet>453</a>            std::fs::remove_file(local_path.to_path_buf_current_os()).expect(<span class="string">"Bug: remove file must succeed"</span>);
-<a href=#454 id=454 data-nosnippet>454</a>        }
-<a href=#455 id=455 data-nosnippet>455</a>        <span class="kw">let </span>_file = FileTxt::open_for_read_and_write(<span class="kw-2">&amp;</span>local_path).expect(<span class="string">"Bug: open_for_read_and_write must succeed."</span>);
-<a href=#456 id=456 data-nosnippet>456</a>        println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, local_path.to_string(), <span class="kw-2">&amp;</span>thread_name);
-<a href=#457 id=457 data-nosnippet>457</a>    } <span class="kw">else </span>{
-<a href=#458 id=458 data-nosnippet>458</a>        <span class="kw">let </span><span class="kw-2">mut </span>bytes_out = <span class="number">0u64</span>;
-<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span>download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string());
-<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span>base_temp_path_to_download = ext_disk_base_path.join_relative(<span class="string">"0_backup_temp"</span>)<span class="question-mark">?</span>.join_relative(<span class="string">"download_temp"</span>)<span class="question-mark">?</span>;
-<a href=#461 id=461 data-nosnippet>461</a>        base_temp_path_to_download.create_dir_all()<span class="question-mark">?</span>;
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="kw">let </span>unique_name = local_path.as_str().replace(<span class="string">"/"</span>, <span class="string">"_"</span>);
-<a href=#463 id=463 data-nosnippet>463</a>        <span class="kw">let </span>temp_local_path = base_temp_path_to_download.join_relative(<span class="kw-2">&amp;</span>unique_name)<span class="question-mark">?</span>;
-<a href=#464 id=464 data-nosnippet>464</a>        <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::OpenOptions::new()
-<a href=#465 id=465 data-nosnippet>465</a>            .create(<span class="bool-val">true</span>)
-<a href=#466 id=466 data-nosnippet>466</a>            .truncate(<span class="bool-val">true</span>)
-<a href=#467 id=467 data-nosnippet>467</a>            .write(<span class="bool-val">true</span>)
-<a href=#468 id=468 data-nosnippet>468</a>            .open(temp_local_path.to_path_buf_current_os())<span class="question-mark">?</span>;
-<a href=#469 id=469 data-nosnippet>469</a>        file.set_modified(system_time_modified).unwrap();
-<a href=#470 id=470 data-nosnippet>470</a>
-<a href=#471 id=471 data-nosnippet>471</a>        <span class="comment">// I will download to a temp folder and then move the file to the right folder only when the download is complete.
-<a href=#472 id=472 data-nosnippet>472</a>        </span><span class="lifetime">'download</span>: <span class="kw">loop </span>{
-<a href=#473 id=473 data-nosnippet>473</a>            <span class="comment">// TODO: I want to press a key to stop the downloading gracefully
-<a href=#474 id=474 data-nosnippet>474</a>            // but this thread is NOT the ui thread
-<a href=#475 id=475 data-nosnippet>475</a>            </span><span class="kw">let </span>result = dropbox_sdk::files::download(client, <span class="kw-2">&amp;</span>download_arg, <span class="prelude-val">Some</span>(bytes_out), <span class="prelude-val">None</span>);
-<a href=#476 id=476 data-nosnippet>476</a>            <span class="kw">match </span>result {
-<a href=#477 id=477 data-nosnippet>477</a>                <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(download_result)) =&gt; {
-<a href=#478 id=478 data-nosnippet>478</a>                    <span class="kw">let </span><span class="kw-2">mut </span>body = download_result.body.expect(<span class="string">"Bug: body must exist"</span>);
-<a href=#479 id=479 data-nosnippet>479</a>                    <span class="kw">loop </span>{
-<a href=#480 id=480 data-nosnippet>480</a>                        <span class="comment">// limit read to 1 MiB per loop iteration so we can output progress
-<a href=#481 id=481 data-nosnippet>481</a>                        // let mut input_chunk = (&amp;mut body).take(1_048_576);
-<a href=#482 id=482 data-nosnippet>482</a>                        </span><span class="kw">use </span>std::io::Read; <span class="comment">//import trait
-<a href=#483 id=483 data-nosnippet>483</a>                        </span><span class="kw">let </span><span class="kw-2">mut </span>input_chunk = (<span class="kw-2">&amp;mut </span>body).take(<span class="number">1_048_576</span>);
-<a href=#484 id=484 data-nosnippet>484</a>                        <span class="kw">match </span>std::io::copy(<span class="kw-2">&amp;mut </span>input_chunk, <span class="kw-2">&amp;mut </span>file) {
-<a href=#485 id=485 data-nosnippet>485</a>                            <span class="prelude-val">Ok</span>(<span class="number">0</span>) =&gt; {
-<a href=#486 id=486 data-nosnippet>486</a>                                <span class="kw">break </span><span class="lifetime">'download</span>;
-<a href=#487 id=487 data-nosnippet>487</a>                            }
-<a href=#488 id=488 data-nosnippet>488</a>                            <span class="prelude-val">Ok</span>(len) =&gt; {
-<a href=#489 id=489 data-nosnippet>489</a>                                bytes_out += len;
-<a href=#490 id=490 data-nosnippet>490</a>                                <span class="kw">if let </span><span class="prelude-val">Some</span>(total) = download_result.content_length {
-<a href=#491 id=491 data-nosnippet>491</a>                                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(
-<a href=#492 id=492 data-nosnippet>492</a>                                        <span class="string">"{:.01}% of {:.02} MB downloading {}"</span>,
-<a href=#493 id=493 data-nosnippet>493</a>                                        bytes_out <span class="kw">as </span>f64 / total <span class="kw">as </span>f64 * <span class="number">100.</span>,
-<a href=#494 id=494 data-nosnippet>494</a>                                        total <span class="kw">as </span>f64 / <span class="number">1000000.</span>,
-<a href=#495 id=495 data-nosnippet>495</a>                                        <span class="kw">crate</span>::shorten_string(path_to_download.as_str(), <span class="number">80</span>)
-<a href=#496 id=496 data-nosnippet>496</a>                                    );
-<a href=#497 id=497 data-nosnippet>497</a>                                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
-<a href=#498 id=498 data-nosnippet>498</a>                                    just_downloaded = path_to_download.to_string();
-<a href=#499 id=499 data-nosnippet>499</a>                                } <span class="kw">else </span>{
-<a href=#500 id=500 data-nosnippet>500</a>                                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(
-<a href=#501 id=501 data-nosnippet>501</a>                                        <span class="string">"{} MB downloaded {}"</span>,
-<a href=#502 id=502 data-nosnippet>502</a>                                        bytes_out <span class="kw">as </span>f64 / <span class="number">1000000.</span>,
-<a href=#503 id=503 data-nosnippet>503</a>                                        <span class="kw">crate</span>::shorten_string(path_to_download.as_str(), <span class="number">80</span>)
-<a href=#504 id=504 data-nosnippet>504</a>                                    );
-<a href=#505 id=505 data-nosnippet>505</a>                                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
-<a href=#506 id=506 data-nosnippet>506</a>                                }
-<a href=#507 id=507 data-nosnippet>507</a>                            }
-<a href=#508 id=508 data-nosnippet>508</a>                            <span class="prelude-val">Err</span>(e) =&gt; {
-<a href=#509 id=509 data-nosnippet>509</a>                                <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Read error: {}"</span>, e);
-<a href=#510 id=510 data-nosnippet>510</a>                                println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
-<a href=#511 id=511 data-nosnippet>511</a>                                <span class="kw">continue </span><span class="lifetime">'download</span>; <span class="comment">// do another request and resume
-<a href=#512 id=512 data-nosnippet>512</a>                            </span>}
-<a href=#513 id=513 data-nosnippet>513</a>                        }
-<a href=#514 id=514 data-nosnippet>514</a>                    }
-<a href=#515 id=515 data-nosnippet>515</a>                }
-<a href=#516 id=516 data-nosnippet>516</a>                <span class="prelude-val">Ok</span>(<span class="prelude-val">Err</span>(download_error)) =&gt; {
-<a href=#517 id=517 data-nosnippet>517</a>                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Download error: {}"</span>, download_error);
-<a href=#518 id=518 data-nosnippet>518</a>                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
-<a href=#519 id=519 data-nosnippet>519</a>                }
-<a href=#520 id=520 data-nosnippet>520</a>                <span class="prelude-val">Err</span>(request_error) =&gt; {
-<a href=#521 id=521 data-nosnippet>521</a>                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Error: {}"</span>, request_error);
-<a href=#522 id=522 data-nosnippet>522</a>                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
-<a href=#523 id=523 data-nosnippet>523</a>                }
-<a href=#524 id=524 data-nosnippet>524</a>            }
-<a href=#525 id=525 data-nosnippet>525</a>            <span class="kw">break </span><span class="lifetime">'download</span>;
-<a href=#526 id=526 data-nosnippet>526</a>        }
-<a href=#527 id=527 data-nosnippet>527</a>        <span class="comment">/*         // change the datetime of the file
-<a href=#528 id=528 data-nosnippet>528</a>        if let Err(err) = filetime::set_file_mtime(&amp;temp_local_path, modified){
-<a href=#529 id=529 data-nosnippet>529</a>            let string_to_print = format!("Error: {} {} {err}",temp_local_path.to_string_lossy(), modified.unix_seconds());
-<a href=#530 id=530 data-nosnippet>530</a>            println_to_ui_thread_with_thread_name(&amp;ui_tx, string_to_print, &amp;thread_name);
-<a href=#531 id=531 data-nosnippet>531</a>        } */
-<a href=#532 id=532 data-nosnippet>532</a>
-<a href=#533 id=533 data-nosnippet>533</a>        // move the completed download file to his final folder
-<a href=#534 id=534 data-nosnippet>534</a>        </span>std::fs::rename(temp_local_path.to_path_buf_current_os(), local_path.to_path_buf_current_os())<span class="question-mark">?</span>;
-<a href=#535 id=535 data-nosnippet>535</a>    }
-<a href=#536 id=536 data-nosnippet>536</a>    <span class="comment">// Cannot change the LastWrite/modified time from the Linux container in WSL to external exFAT on Windows.
-<a href=#537 id=537 data-nosnippet>537</a>    // I will instead cross-compile to Windows and run the exe in Windows where it works much better with the external exFAT drive.
-<a href=#538 id=538 data-nosnippet>538</a>    // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
-<a href=#539 id=539 data-nosnippet>539</a>    // I use the channel files_append_tx to send messages from many threads to just one receiver.
-<a href=#540 id=540 data-nosnippet>540</a>    // That receiver can append to files without worrying of other threads interfering.
-<a href=#541 id=541 data-nosnippet>541</a>    // So only a single thread can write to a file. That is then sure to be serial and never simultaneously (data race).
-<a href=#542 id=542 data-nosnippet>542</a>
-<a href=#543 id=543 data-nosnippet>543</a>    </span>files_append_tx.send(just_downloaded).expect(<span class="string">"Bug: mpsc send"</span>);
-<a href=#544 id=544 data-nosnippet>544</a>
-<a href=#545 id=545 data-nosnippet>545</a>    <span class="prelude-val">Ok</span>(())
-<a href=#546 id=546 data-nosnippet>546</a>}</code></pre></div></section></main></body></html>
+<a href=#371 id=371 data-nosnippet>371</a>                <span class="kw">let </span>path_to_download =
+<a href=#372 id=372 data-nosnippet>372</a>                    CrossPathBuf::new(line[<span class="number">0</span>]).expect(<span class="string">"Inside closure cannot use ?. Error handling inside closures is not good."</span>);
+<a href=#373 id=373 data-nosnippet>373</a>                <span class="kw">let </span>ui_tx_clone = ui_tx.clone();
+<a href=#374 id=374 data-nosnippet>374</a>                <span class="kw">let </span>ui_tx_move_to_closure_2 = ui_tx.clone();
+<a href=#375 id=375 data-nosnippet>375</a>                <span class="kw">let </span>files_append_tx_move_to_closure = files_append_tx.clone();
+<a href=#376 id=376 data-nosnippet>376</a>                <span class="comment">// only the closure is actually spawned, because it is the return value of the block
+<a href=#377 id=377 data-nosnippet>377</a>                </span><span class="kw">move </span>|<span class="kw">_</span>| {
+<a href=#378 id=378 data-nosnippet>378</a>                    <span class="kw">let </span>thread_num = rayon::current_thread_index().expect(<span class="string">"Inside closure cannot use ?. Bug: thread num must exist."</span>);
+<a href=#379 id=379 data-nosnippet>379</a>                    <span class="comment">// catch propagated errors and communicate errors to user or developer
+<a href=#380 id=380 data-nosnippet>380</a>                    // spawned closure cannot propagate error with ?
+<a href=#381 id=381 data-nosnippet>381</a>                    </span><span class="kw">match </span>download_internal(
+<a href=#382 id=382 data-nosnippet>382</a>                        ui_tx_clone,
+<a href=#383 id=383 data-nosnippet>383</a>                        ext_disk_base_path,
+<a href=#384 id=384 data-nosnippet>384</a>                        client_ref,
+<a href=#385 id=385 data-nosnippet>385</a>                        thread_num <span class="kw">as </span>i32,
+<a href=#386 id=386 data-nosnippet>386</a>                        <span class="kw-2">&amp;</span>path_to_download,
+<a href=#387 id=387 data-nosnippet>387</a>                        files_append_tx_move_to_closure,
+<a href=#388 id=388 data-nosnippet>388</a>                    ) {
+<a href=#389 id=389 data-nosnippet>389</a>                        <span class="prelude-val">Ok</span>(()) =&gt; {}
+<a href=#390 id=390 data-nosnippet>390</a>                        <span class="prelude-val">Err</span>(err) =&gt; println_to_ui_thread_with_thread_name(
+<a href=#391 id=391 data-nosnippet>391</a>                            <span class="kw-2">&amp;</span>ui_tx_move_to_closure_2,
+<a href=#392 id=392 data-nosnippet>392</a>                            <span class="macro">format!</span>(<span class="string">"Error in thread {err}"</span>),
+<a href=#393 id=393 data-nosnippet>393</a>                            <span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>),
+<a href=#394 id=394 data-nosnippet>394</a>                        ),
+<a href=#395 id=395 data-nosnippet>395</a>                    }
+<a href=#396 id=396 data-nosnippet>396</a>                }
+<a href=#397 id=397 data-nosnippet>397</a>            });
+<a href=#398 id=398 data-nosnippet>398</a>        }
+<a href=#399 id=399 data-nosnippet>399</a>
+<a href=#400 id=400 data-nosnippet>400</a>        <span class="comment">// region: Receiver reads all msgs from the queue
+<a href=#401 id=401 data-nosnippet>401</a>        // and them appends it neatly in files. Because only this thread writes to files there cannot be data race condition.
+<a href=#402 id=402 data-nosnippet>402</a>        </span>drop(files_append_tx);
+<a href=#403 id=403 data-nosnippet>403</a>        <span class="kw">for </span>just_downloaded <span class="kw">in </span><span class="kw-2">&amp;</span>files_append_rx {
+<a href=#404 id=404 data-nosnippet>404</a>            <span class="kw">if </span>!just_downloaded.is_empty() {
+<a href=#405 id=405 data-nosnippet>405</a>                file_list_just_downloaded
+<a href=#406 id=406 data-nosnippet>406</a>                    .write_append_str(<span class="kw-2">&amp;</span><span class="macro">format!</span>(<span class="string">"{just_downloaded}\n"</span>))
+<a href=#407 id=407 data-nosnippet>407</a>                    .expect(<span class="string">"Inside closure cannot use ?. Bug: file_list_just_downloaded must be writable."</span>);
+<a href=#408 id=408 data-nosnippet>408</a>            }
+<a href=#409 id=409 data-nosnippet>409</a>        }
+<a href=#410 id=410 data-nosnippet>410</a>        <span class="comment">// endregion: Receiver reads all msgs from the queue
+<a href=#411 id=411 data-nosnippet>411</a>    </span>});
+<a href=#412 id=412 data-nosnippet>412</a>
+<a href=#413 id=413 data-nosnippet>413</a>    <span class="prelude-val">Ok</span>(())
+<a href=#414 id=414 data-nosnippet>414</a>}
+<a href=#415 id=415 data-nosnippet>415</a>
+<a href=#416 id=416 data-nosnippet>416</a><span class="doccomment">/// Download one file with client object dropbox_sdk::default_client::UserAuthDefaultClient.
+<a href=#417 id=417 data-nosnippet>417</a></span><span class="kw">fn </span>download_internal(
+<a href=#418 id=418 data-nosnippet>418</a>    ui_tx: std::sync::mpsc::Sender&lt;(String, ThreadName)&gt;,
+<a href=#419 id=419 data-nosnippet>419</a>    ext_disk_base_path: <span class="kw-2">&amp;</span>CrossPathBuf,
+<a href=#420 id=420 data-nosnippet>420</a>    client: <span class="kw-2">&amp;</span>dropbox_sdk::default_client::UserAuthDefaultClient,
+<a href=#421 id=421 data-nosnippet>421</a>    thread_num: i32,
+<a href=#422 id=422 data-nosnippet>422</a>    path_to_download: <span class="kw-2">&amp;</span>CrossPathBuf,
+<a href=#423 id=423 data-nosnippet>423</a>    files_append_tx: std::sync::mpsc::Sender&lt;String&gt;,
+<a href=#424 id=424 data-nosnippet>424</a>) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="kw">let </span>thread_name = <span class="macro">format!</span>(<span class="string">"R{thread_num}"</span>);
+<a href=#426 id=426 data-nosnippet>426</a>    <span class="comment">// add a leading slash to path_to_download because the dropbox_sdk needs it
+<a href=#427 id=427 data-nosnippet>427</a>    </span><span class="kw">let </span>path_to_download = path_to_download.add_start_slash()<span class="question-mark">?</span>;
+<a href=#428 id=428 data-nosnippet>428</a>    <span class="kw">let </span>local_path = ext_disk_base_path.join_relative(path_to_download.as_str())<span class="question-mark">?</span>;
+<a href=#429 id=429 data-nosnippet>429</a>    local_path.create_dir_all_for_file()<span class="question-mark">?</span>;
+<a href=#430 id=430 data-nosnippet>430</a>    <span class="kw">let </span>modified_str;
+<a href=#431 id=431 data-nosnippet>431</a>    <span class="kw">let </span>metadata_size;
+<a href=#432 id=432 data-nosnippet>432</a>    <span class="kw">let </span><span class="kw-2">mut </span>just_downloaded = String::new();
+<a href=#433 id=433 data-nosnippet>433</a>
+<a href=#434 id=434 data-nosnippet>434</a>    <span class="comment">// get datetime from remote
+<a href=#435 id=435 data-nosnippet>435</a>
+<a href=#436 id=436 data-nosnippet>436</a>    </span><span class="kw">let </span>get_metadata_arg = dropbox_sdk::files::GetMetadataArg::new(path_to_download.to_string());
+<a href=#437 id=437 data-nosnippet>437</a>    <span class="kw">let </span>metadata = (dropbox_sdk::files::get_metadata(client, <span class="kw-2">&amp;</span>get_metadata_arg)<span class="question-mark">?</span>)<span class="question-mark">?</span>;
+<a href=#438 id=438 data-nosnippet>438</a>    <span class="kw">match </span>metadata {
+<a href=#439 id=439 data-nosnippet>439</a>        dropbox_sdk::files::Metadata::File(metadata) =&gt; {
+<a href=#440 id=440 data-nosnippet>440</a>            modified_str = metadata.client_modified;
+<a href=#441 id=441 data-nosnippet>441</a>            metadata_size = metadata.size;
+<a href=#442 id=442 data-nosnippet>442</a>        }
+<a href=#443 id=443 data-nosnippet>443</a>        <span class="kw">_ </span>=&gt; {
+<a href=#444 id=444 data-nosnippet>444</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorFromStr(<span class="string">"This is not a file on Dropbox"</span>));
+<a href=#445 id=445 data-nosnippet>445</a>        }
+<a href=#446 id=446 data-nosnippet>446</a>    }
+<a href=#447 id=447 data-nosnippet>447</a>
+<a href=#448 id=448 data-nosnippet>448</a>    <span class="kw">let </span>system_time_modified = humantime::parse_rfc3339(<span class="kw-2">&amp;</span>modified_str)<span class="question-mark">?</span>;
+<a href=#449 id=449 data-nosnippet>449</a>    <span class="comment">// let modified = filetime::FileTime::from_system_time(system_time_modified);
+<a href=#450 id=450 data-nosnippet>450</a>
+<a href=#451 id=451 data-nosnippet>451</a>    // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
+<a href=#452 id=452 data-nosnippet>452</a>    </span><span class="kw">if </span>metadata_size == <span class="number">0 </span>{
+<a href=#453 id=453 data-nosnippet>453</a>        <span class="kw">if </span>local_path.exists() {
+<a href=#454 id=454 data-nosnippet>454</a>            std::fs::remove_file(local_path.to_path_buf_current_os())<span class="question-mark">?</span>;
+<a href=#455 id=455 data-nosnippet>455</a>        }
+<a href=#456 id=456 data-nosnippet>456</a>        <span class="kw">let </span>_file = FileTxt::open_for_read_and_write(<span class="kw-2">&amp;</span>local_path)<span class="question-mark">?</span>;
+<a href=#457 id=457 data-nosnippet>457</a>        println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, local_path.to_string(), <span class="kw-2">&amp;</span>thread_name);
+<a href=#458 id=458 data-nosnippet>458</a>    } <span class="kw">else </span>{
+<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span><span class="kw-2">mut </span>bytes_out = <span class="number">0u64</span>;
+<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span>download_arg = dropbox_sdk::files::DownloadArg::new(path_to_download.to_string());
+<a href=#461 id=461 data-nosnippet>461</a>        <span class="kw">let </span>base_temp_path_to_download = ext_disk_base_path.join_relative(<span class="string">"0_backup_temp"</span>)<span class="question-mark">?</span>.join_relative(<span class="string">"download_temp"</span>)<span class="question-mark">?</span>;
+<a href=#462 id=462 data-nosnippet>462</a>        base_temp_path_to_download.create_dir_all()<span class="question-mark">?</span>;
+<a href=#463 id=463 data-nosnippet>463</a>        <span class="kw">let </span>unique_name = local_path.as_str().replace(<span class="string">"/"</span>, <span class="string">"_"</span>);
+<a href=#464 id=464 data-nosnippet>464</a>        <span class="kw">let </span>temp_local_path = base_temp_path_to_download.join_relative(<span class="kw-2">&amp;</span>unique_name)<span class="question-mark">?</span>;
+<a href=#465 id=465 data-nosnippet>465</a>        <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::OpenOptions::new()
+<a href=#466 id=466 data-nosnippet>466</a>            .create(<span class="bool-val">true</span>)
+<a href=#467 id=467 data-nosnippet>467</a>            .truncate(<span class="bool-val">true</span>)
+<a href=#468 id=468 data-nosnippet>468</a>            .write(<span class="bool-val">true</span>)
+<a href=#469 id=469 data-nosnippet>469</a>            .open(temp_local_path.to_path_buf_current_os())<span class="question-mark">?</span>;
+<a href=#470 id=470 data-nosnippet>470</a>        file.set_modified(system_time_modified)<span class="question-mark">?</span>;
+<a href=#471 id=471 data-nosnippet>471</a>
+<a href=#472 id=472 data-nosnippet>472</a>        <span class="comment">// I will download to a temp folder and then move the file to the right folder only when the download is complete.
+<a href=#473 id=473 data-nosnippet>473</a>        </span><span class="lifetime">'download</span>: <span class="kw">loop </span>{
+<a href=#474 id=474 data-nosnippet>474</a>            <span class="comment">// TODO: I want to press a key to stop the downloading gracefully
+<a href=#475 id=475 data-nosnippet>475</a>            // but this thread is NOT the ui thread
+<a href=#476 id=476 data-nosnippet>476</a>            </span><span class="kw">let </span>result = dropbox_sdk::files::download(client, <span class="kw-2">&amp;</span>download_arg, <span class="prelude-val">Some</span>(bytes_out), <span class="prelude-val">None</span>);
+<a href=#477 id=477 data-nosnippet>477</a>            <span class="kw">match </span>result {
+<a href=#478 id=478 data-nosnippet>478</a>                <span class="prelude-val">Ok</span>(<span class="prelude-val">Ok</span>(download_result)) =&gt; {
+<a href=#479 id=479 data-nosnippet>479</a>                    <span class="kw">let </span><span class="kw-2">mut </span>body = download_result.body.ok_or_else(|| Error::ErrorFromStr(<span class="string">"Bug: body must exist"</span>))<span class="question-mark">?</span>;
+<a href=#480 id=480 data-nosnippet>480</a>                    <span class="kw">loop </span>{
+<a href=#481 id=481 data-nosnippet>481</a>                        <span class="comment">// limit read to 1 MiB per loop iteration so we can output progress
+<a href=#482 id=482 data-nosnippet>482</a>                        // let mut input_chunk = (&amp;mut body).take(1_048_576);
+<a href=#483 id=483 data-nosnippet>483</a>                        </span><span class="kw">use </span>std::io::Read; <span class="comment">//import trait
+<a href=#484 id=484 data-nosnippet>484</a>                        </span><span class="kw">let </span><span class="kw-2">mut </span>input_chunk = (<span class="kw-2">&amp;mut </span>body).take(<span class="number">1_048_576</span>);
+<a href=#485 id=485 data-nosnippet>485</a>                        <span class="kw">match </span>std::io::copy(<span class="kw-2">&amp;mut </span>input_chunk, <span class="kw-2">&amp;mut </span>file) {
+<a href=#486 id=486 data-nosnippet>486</a>                            <span class="prelude-val">Ok</span>(<span class="number">0</span>) =&gt; {
+<a href=#487 id=487 data-nosnippet>487</a>                                <span class="kw">break </span><span class="lifetime">'download</span>;
+<a href=#488 id=488 data-nosnippet>488</a>                            }
+<a href=#489 id=489 data-nosnippet>489</a>                            <span class="prelude-val">Ok</span>(len) =&gt; {
+<a href=#490 id=490 data-nosnippet>490</a>                                bytes_out += len;
+<a href=#491 id=491 data-nosnippet>491</a>                                <span class="kw">if let </span><span class="prelude-val">Some</span>(total) = download_result.content_length {
+<a href=#492 id=492 data-nosnippet>492</a>                                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(
+<a href=#493 id=493 data-nosnippet>493</a>                                        <span class="string">"{:.01}% of {:.02} MB downloading {}"</span>,
+<a href=#494 id=494 data-nosnippet>494</a>                                        bytes_out <span class="kw">as </span>f64 / total <span class="kw">as </span>f64 * <span class="number">100.</span>,
+<a href=#495 id=495 data-nosnippet>495</a>                                        total <span class="kw">as </span>f64 / <span class="number">1000000.</span>,
+<a href=#496 id=496 data-nosnippet>496</a>                                        <span class="kw">crate</span>::shorten_string(path_to_download.as_str(), <span class="number">80</span>)<span class="question-mark">?
+<a href=#497 id=497 data-nosnippet>497</a>                                    </span>);
+<a href=#498 id=498 data-nosnippet>498</a>                                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
+<a href=#499 id=499 data-nosnippet>499</a>                                    just_downloaded = path_to_download.to_string();
+<a href=#500 id=500 data-nosnippet>500</a>                                } <span class="kw">else </span>{
+<a href=#501 id=501 data-nosnippet>501</a>                                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(
+<a href=#502 id=502 data-nosnippet>502</a>                                        <span class="string">"{} MB downloaded {}"</span>,
+<a href=#503 id=503 data-nosnippet>503</a>                                        bytes_out <span class="kw">as </span>f64 / <span class="number">1000000.</span>,
+<a href=#504 id=504 data-nosnippet>504</a>                                        <span class="kw">crate</span>::shorten_string(path_to_download.as_str(), <span class="number">80</span>)<span class="question-mark">?
+<a href=#505 id=505 data-nosnippet>505</a>                                    </span>);
+<a href=#506 id=506 data-nosnippet>506</a>                                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
+<a href=#507 id=507 data-nosnippet>507</a>                                }
+<a href=#508 id=508 data-nosnippet>508</a>                            }
+<a href=#509 id=509 data-nosnippet>509</a>                            <span class="prelude-val">Err</span>(e) =&gt; {
+<a href=#510 id=510 data-nosnippet>510</a>                                <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Read error: {}"</span>, e);
+<a href=#511 id=511 data-nosnippet>511</a>                                println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
+<a href=#512 id=512 data-nosnippet>512</a>                                <span class="kw">continue </span><span class="lifetime">'download</span>; <span class="comment">// do another request and resume
+<a href=#513 id=513 data-nosnippet>513</a>                            </span>}
+<a href=#514 id=514 data-nosnippet>514</a>                        }
+<a href=#515 id=515 data-nosnippet>515</a>                    }
+<a href=#516 id=516 data-nosnippet>516</a>                }
+<a href=#517 id=517 data-nosnippet>517</a>                <span class="prelude-val">Ok</span>(<span class="prelude-val">Err</span>(download_error)) =&gt; {
+<a href=#518 id=518 data-nosnippet>518</a>                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Download error: {}"</span>, download_error);
+<a href=#519 id=519 data-nosnippet>519</a>                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
+<a href=#520 id=520 data-nosnippet>520</a>                }
+<a href=#521 id=521 data-nosnippet>521</a>                <span class="prelude-val">Err</span>(request_error) =&gt; {
+<a href=#522 id=522 data-nosnippet>522</a>                    <span class="kw">let </span>string_to_print = <span class="macro">format!</span>(<span class="string">"Error: {}"</span>, request_error);
+<a href=#523 id=523 data-nosnippet>523</a>                    println_to_ui_thread_with_thread_name(<span class="kw-2">&amp;</span>ui_tx, string_to_print, <span class="kw-2">&amp;</span>thread_name);
+<a href=#524 id=524 data-nosnippet>524</a>                }
+<a href=#525 id=525 data-nosnippet>525</a>            }
+<a href=#526 id=526 data-nosnippet>526</a>            <span class="kw">break </span><span class="lifetime">'download</span>;
+<a href=#527 id=527 data-nosnippet>527</a>        }
+<a href=#528 id=528 data-nosnippet>528</a>        <span class="comment">/*         // change the datetime of the file
+<a href=#529 id=529 data-nosnippet>529</a>        if let Err(err) = filetime::set_file_mtime(&amp;temp_local_path, modified){
+<a href=#530 id=530 data-nosnippet>530</a>            let string_to_print = format!("Error: {} {} {err}",temp_local_path.to_string_lossy(), modified.unix_seconds());
+<a href=#531 id=531 data-nosnippet>531</a>            println_to_ui_thread_with_thread_name(&amp;ui_tx, string_to_print, &amp;thread_name);
+<a href=#532 id=532 data-nosnippet>532</a>        } */
+<a href=#533 id=533 data-nosnippet>533</a>
+<a href=#534 id=534 data-nosnippet>534</a>        // move the completed download file to his final folder
+<a href=#535 id=535 data-nosnippet>535</a>        </span>std::fs::rename(temp_local_path.to_path_buf_current_os(), local_path.to_path_buf_current_os())<span class="question-mark">?</span>;
+<a href=#536 id=536 data-nosnippet>536</a>    }
+<a href=#537 id=537 data-nosnippet>537</a>    <span class="comment">// Cannot change the LastWrite/modified time from the Linux container in WSL to external exFAT on Windows.
+<a href=#538 id=538 data-nosnippet>538</a>    // I will instead cross-compile to Windows and run the exe in Windows where it works much better with the external exFAT drive.
+<a href=#539 id=539 data-nosnippet>539</a>    // From this thread I have to send a message to the other thread to avoid multiple threads writing to the same file. That is a no-no.
+<a href=#540 id=540 data-nosnippet>540</a>    // I use the channel files_append_tx to send messages from many threads to just one receiver.
+<a href=#541 id=541 data-nosnippet>541</a>    // That receiver can append to files without worrying of other threads interfering.
+<a href=#542 id=542 data-nosnippet>542</a>    // So only a single thread can write to a file. That is then sure to be serial and never simultaneously (data race).
+<a href=#543 id=543 data-nosnippet>543</a>
+<a href=#544 id=544 data-nosnippet>544</a>    </span>files_append_tx.send(just_downloaded)<span class="question-mark">?</span>;
+<a href=#545 id=545 data-nosnippet>545</a>
+<a href=#546 id=546 data-nosnippet>546</a>    <span class="prelude-val">Ok</span>(())
+<a href=#547 id=547 data-nosnippet>547</a>}</code></pre></div></section></main></body></html>
