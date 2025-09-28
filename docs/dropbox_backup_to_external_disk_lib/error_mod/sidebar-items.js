@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["DropboxBackupToExternalDiskError"]};
+window.SIDEBAR_ITEMS = {"enum":["Error"],"type":["Result"]};

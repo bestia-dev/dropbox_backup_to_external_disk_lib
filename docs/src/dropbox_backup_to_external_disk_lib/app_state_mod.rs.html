@@ -2,7 +2,7 @@
 <a href=#2 id=2 data-nosnippet>2</a>
 <a href=#3 id=3 data-nosnippet>3</a></span><span class="kw">use </span>crossplatform_path::CrossPathBuf;
 <a href=#4 id=4 data-nosnippet>4</a>
-<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><span class="kw">crate</span>::error_mod::DropboxBackupToExternalDiskError;
+<a href=#5 id=5 data-nosnippet>5</a><span class="kw">use </span><span class="kw">crate</span>::error_mod::Result;
 <a href=#6 id=6 data-nosnippet>6</a>
 <a href=#7 id=7 data-nosnippet>7</a><span class="attr">#[derive(Debug)]
 <a href=#8 id=8 data-nosnippet>8</a></span><span class="kw">pub struct </span>AppConfig {
@@ -27,7 +27,7 @@
 <a href=#27 id=27 data-nosnippet>27</a>/// These methods will be available globally.  
 <a href=#28 id=28 data-nosnippet>28</a></span><span class="kw">pub trait </span>AppStateMethods: Sync + Send {
 <a href=#29 id=29 data-nosnippet>29</a>    <span class="doccomment">/// get encrypted authorization token from env var
-<a href=#30 id=30 data-nosnippet>30</a>    </span><span class="kw">fn </span>load_keys_from_io(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(String, String), DropboxBackupToExternalDiskError&gt;;
+<a href=#30 id=30 data-nosnippet>30</a>    </span><span class="kw">fn </span>load_keys_from_io(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span>&lt;(String, String)&gt;;
 <a href=#31 id=31 data-nosnippet>31</a>    <span class="doccomment">/// reference to app_config data
 <a href=#32 id=32 data-nosnippet>32</a>    </span><span class="kw">fn </span>ref_app_config(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>AppConfig;
 <a href=#33 id=33 data-nosnippet>33</a>    <span class="doccomment">/// get locked Mutex

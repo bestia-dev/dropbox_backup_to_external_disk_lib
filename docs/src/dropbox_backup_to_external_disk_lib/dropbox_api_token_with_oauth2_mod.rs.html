@@ -1,0 +1,407 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/dropbox_api_token_with_oauth2_mod.rs`."><title>dropbox_api_token_with_oauth2_mod.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-84e720fa.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="dropbox_backup_to_external_disk_lib" data-themes="" data-resource-suffix="" data-rustdoc-version="1.89.0 (29483883e 2025-08-04)" data-channel="1.89.0" data-search-js="search-92309212.js" data-settings-js="settings-5514c975.js" ><script src="../../static.files/storage-4e99c027.js"></script><script defer src="../../static.files/src-script-813739b1.js"></script><script defer src="../../src-files.js"></script><script defer src="../../static.files/main-fd3af306.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-32bb7600.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-6580c154.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><rustdoc-search></rustdoc-search><section id="main-content" class="content"><div class="main-heading"><h1><div class="sub-heading">dropbox_backup_to_external_disk_lib/</div>dropbox_api_token_with_oauth2_mod.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="comment">// dropbox_api_token_with_oauth2_mod.rs
+<a href=#2 id=2 data-nosnippet>2</a>
+<a href=#3 id=3 data-nosnippet>3</a>// TODO: Change to be UI agnostic
+<a href=#4 id=4 data-nosnippet>4</a>
+<a href=#5 id=5 data-nosnippet>5</a></span><span class="doccomment">//! # decrypt dropbox api token from file or use the oauth2 "PKCE code workflow" to get the access token and encrypt it and save into file
+<a href=#6 id=6 data-nosnippet>6</a>//!
+<a href=#7 id=7 data-nosnippet>7</a>//! Dropbox offers the preferred OAuth2 "PKCE with code flow" for client applications.
+<a href=#8 id=8 data-nosnippet>8</a>//! In clients that run on the client machine it is impossible to hide secrets.
+<a href=#9 id=9 data-nosnippet>9</a>//! So there is the new recommended PKCE "pixie" (Proof Key for Code Exchange) to the rescue.
+<a href=#10 id=10 data-nosnippet>10</a>//! &lt;https://dropbox.tech/developers/pkce--what-and-why-&gt;
+<a href=#11 id=11 data-nosnippet>11</a>//!
+<a href=#12 id=12 data-nosnippet>12</a>//! ## Secrets
+<a href=#13 id=13 data-nosnippet>13</a>//!
+<a href=#14 id=14 data-nosnippet>14</a>//! In this module there will be a lot of work with secrets.  
+<a href=#15 id=15 data-nosnippet>15</a>//! It is difficult to trust an external crate with your secrets.  
+<a href=#16 id=16 data-nosnippet>16</a>//! External crates can get updated unexpectedly and change to malicious code.  
+<a href=#17 id=17 data-nosnippet>17</a>//!
+<a href=#18 id=18 data-nosnippet>18</a>//! ## Copy code instead of dependency crate
+<a href=#19 id=19 data-nosnippet>19</a>//!
+<a href=#20 id=20 data-nosnippet>20</a>//! It is best to have the Rust code under your fingertips when dealing with secrets.  
+<a href=#21 id=21 data-nosnippet>21</a>//! Than you know, nobody will touch this code except of you.  
+<a href=#22 id=22 data-nosnippet>22</a>//! You can copy this code directly into your codebase as a module,
+<a href=#23 id=23 data-nosnippet>23</a>//! inspect and review it and know exactly what is going on.  
+<a href=#24 id=24 data-nosnippet>24</a>//! The code is as linear and readable with comments as possible.
+<a href=#25 id=25 data-nosnippet>25</a>//!
+<a href=#26 id=26 data-nosnippet>26</a>//! ## Store encrypted secret to file
+<a href=#27 id=27 data-nosnippet>27</a>//!
+<a href=#28 id=28 data-nosnippet>28</a>//! The secrets will be encrypted with an ssh private key and stored in the `~/.ssh` folder.  
+<a href=#29 id=29 data-nosnippet>29</a>//! This way the data is protected at rest in storage drive.  
+<a href=#30 id=30 data-nosnippet>30</a>//!
+<a href=#31 id=31 data-nosnippet>31</a>//! ## In memory protection
+<a href=#32 id=32 data-nosnippet>32</a>//!
+<a href=#33 id=33 data-nosnippet>33</a>//! This is a tough one! There is no 100% software protection of secrets in memory.  
+<a href=#34 id=34 data-nosnippet>34</a>//! Theoretically an attacker could dump the memory in any moment and read the secrets.  
+<a href=#35 id=35 data-nosnippet>35</a>//! There is always a moment when the secret is used in its plaintext form. This cannot be avoided.
+<a href=#36 id=36 data-nosnippet>36</a>//! All we can do now is to be alert what data is secret and take better care of it.  
+<a href=#37 id=37 data-nosnippet>37</a>//! Every variable that have secrets will have the word `secret` in it.
+<a href=#38 id=38 data-nosnippet>38</a>//! When a variable is confusing I will use the word `plain` to express it is `not a secret`.
+<a href=#39 id=39 data-nosnippet>39</a>//! To avoid leaking in logs I will use the `secrecy` crate. This is not 100% protection. It is important just to express intent when the secrets are really used.  
+<a href=#40 id=40 data-nosnippet>40</a>//! `Secrecy` needs the trait `zeroize` to empty the memory after use for better memory hygiene.
+<a href=#41 id=41 data-nosnippet>41</a>//! I will add the type names explicitly to emphasis the secrecy types used.
+<a href=#42 id=42 data-nosnippet>42</a>//!
+<a href=#43 id=43 data-nosnippet>43</a>//! ## encrypt_decrypt_with_ssh_key_mod
+<a href=#44 id=44 data-nosnippet>44</a>//!
+<a href=#45 id=45 data-nosnippet>45</a>//! This module depends on the generic module for encryption `encrypt_decrypt_with_ssh_key_mod.rs`. That module also needs to be copy and paste into your project.
+<a href=#46 id=46 data-nosnippet>46</a>//!
+<a href=#47 id=47 data-nosnippet>47</a>//! ## Other dependencies
+<a href=#48 id=48 data-nosnippet>48</a>//!
+<a href=#49 id=49 data-nosnippet>49</a>//! In `Cargo.toml` there are a group od dependencies needed for this to work. They are so generic that I don't expect any malware in them to be able to steal some usable secrets.  
+<a href=#50 id=50 data-nosnippet>50</a>//!
+<a href=#51 id=51 data-nosnippet>51</a>//! Beware that the versions of crates in `Cargo.toml` are not precisely pinpointed. In rust the symbol '=' means "the same major number equal or newer to". This means from one compilation to another, it can automatically change to a newer version without the programmer even noticing it.
+<a href=#52 id=52 data-nosnippet>52</a>//!
+<a href=#53 id=53 data-nosnippet>53</a>//! This is great if the newer version is solving some security issue. But this is super-bad if the newer version is malware supply chain attack. We have no idea how to distinguish one from another.
+<a href=#54 id=54 data-nosnippet>54</a>//!
+<a href=#55 id=55 data-nosnippet>55</a>//! Just to mention: there exists the trick to control the `Cargo.lock` file and forbid the change of the version number, but more times than not, you will not want to commit the lock file into the Dropbox repository.
+<a href=#56 id=56 data-nosnippet>56</a>//!
+<a href=#57 id=57 data-nosnippet>57</a>//! ```toml
+<a href=#58 id=58 data-nosnippet>58</a>//! [dependencies]
+<a href=#59 id=59 data-nosnippet>59</a>//! reqwest={version="0.12.12", features=["json","blocking"]}
+<a href=#60 id=60 data-nosnippet>60</a>//! serde ={ version= "1.0.217", features=["std","derive"]}
+<a href=#61 id=61 data-nosnippet>61</a>//! serde_json = "1.0.138"
+<a href=#62 id=62 data-nosnippet>62</a>//! ssh-key = { version = "0.6.7", features = [ "rsa", "encryption","ed25519"] }
+<a href=#63 id=63 data-nosnippet>63</a>//! ssh_agent_client_rs_git_bash = "0.0.19"
+<a href=#64 id=64 data-nosnippet>64</a>//! rsa = { version = "0.9.7", features = ["sha2","pem"] }
+<a href=#65 id=65 data-nosnippet>65</a>//! zeroize = {version="1.8.1", features=["derive"]}
+<a href=#66 id=66 data-nosnippet>66</a>//! aes-gcm = "0.10.3"
+<a href=#67 id=67 data-nosnippet>67</a>//! base64ct = {version = "1.6.0", features = ["alloc"] }
+<a href=#68 id=68 data-nosnippet>68</a>//! secrecy = "0.10.3"
+<a href=#69 id=69 data-nosnippet>69</a>//! chrono ="0.4.39"
+<a href=#70 id=70 data-nosnippet>70</a>//! crossplatform_path="1.1.1"
+<a href=#71 id=71 data-nosnippet>71</a>//! ```
+<a href=#72 id=72 data-nosnippet>72</a>//!
+<a href=#73 id=73 data-nosnippet>73</a>
+<a href=#74 id=74 data-nosnippet>74</a></span><span class="attr">#![allow(dead_code)]
+<a href=#75 id=75 data-nosnippet>75</a>
+<a href=#76 id=76 data-nosnippet>76</a></span><span class="kw">use </span>rsa::sha2::Digest;
+<a href=#77 id=77 data-nosnippet>77</a><span class="kw">use </span>secrecy::{ExposeSecret, SecretBox, SecretString};
+<a href=#78 id=78 data-nosnippet>78</a>
+<a href=#79 id=79 data-nosnippet>79</a><span class="kw">use crate</span>::{Error, <span class="prelude-ty">Result</span>};
+<a href=#80 id=80 data-nosnippet>80</a>
+<a href=#81 id=81 data-nosnippet>81</a><span class="kw">use </span><span class="kw">super</span>::encrypt_decrypt_mod <span class="kw">as </span>ende;
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a><span class="comment">// region: Public API constants
+<a href=#84 id=84 data-nosnippet>84</a>// ANSI colors for Linux terminal
+<a href=#85 id=85 data-nosnippet>85</a>// https://github.com/shiena/ansicolor/blob/master/README.md
+<a href=#86 id=86 data-nosnippet>86</a></span><span class="doccomment">/// ANSI color
+<a href=#87 id=87 data-nosnippet>87</a></span><span class="kw">pub const </span>RED: <span class="kw-2">&amp;</span>str = <span class="string">"\x1b[31m"</span>;
+<a href=#88 id=88 data-nosnippet>88</a><span class="doccomment">/// ANSI color
+<a href=#89 id=89 data-nosnippet>89</a></span><span class="kw">pub const </span>GREEN: <span class="kw-2">&amp;</span>str = <span class="string">"\x1b[32m"</span>;
+<a href=#90 id=90 data-nosnippet>90</a><span class="doccomment">/// ANSI color
+<a href=#91 id=91 data-nosnippet>91</a></span><span class="kw">pub const </span>YELLOW: <span class="kw-2">&amp;</span>str = <span class="string">"\x1b[33m"</span>;
+<a href=#92 id=92 data-nosnippet>92</a><span class="doccomment">/// ANSI color
+<a href=#93 id=93 data-nosnippet>93</a></span><span class="kw">pub const </span>BLUE: <span class="kw-2">&amp;</span>str = <span class="string">"\x1b[34m"</span>;
+<a href=#94 id=94 data-nosnippet>94</a><span class="doccomment">/// ANSI color
+<a href=#95 id=95 data-nosnippet>95</a></span><span class="kw">pub const </span>RESET: <span class="kw-2">&amp;</span>str = <span class="string">"\x1b[0m"</span>;
+<a href=#96 id=96 data-nosnippet>96</a><span class="comment">// endregion: Public API constants
+<a href=#97 id=97 data-nosnippet>97</a>
+<a href=#98 id=98 data-nosnippet>98</a></span><span class="attr">#[derive(serde::Deserialize, serde::Serialize)]
+<a href=#99 id=99 data-nosnippet>99</a></span><span class="kw">pub struct </span>DropboxApiConfig {
+<a href=#100 id=100 data-nosnippet>100</a>    <span class="kw">pub </span>dropbox_app_name: String,
+<a href=#101 id=101 data-nosnippet>101</a>    <span class="doccomment">/// AKA app_name
+<a href=#102 id=102 data-nosnippet>102</a>    </span><span class="kw">pub </span>client_id: String,
+<a href=#103 id=103 data-nosnippet>103</a>    <span class="kw">pub </span>dropbox_api_private_key_file_name: String,
+<a href=#104 id=104 data-nosnippet>104</a>}
+<a href=#105 id=105 data-nosnippet>105</a>
+<a href=#106 id=106 data-nosnippet>106</a><span class="doccomment">/// Application state (static) is initialized only once in the main() function.
+<a href=#107 id=107 data-nosnippet>107</a>///
+<a href=#108 id=108 data-nosnippet>108</a>/// And then is accessible all over the code.
+<a href=#109 id=109 data-nosnippet>109</a></span><span class="kw">pub static </span>DROPBOX_API_CONFIG: std::sync::OnceLock&lt;DropboxApiConfig&gt; = std::sync::OnceLock::new();
+<a href=#110 id=110 data-nosnippet>110</a>
+<a href=#111 id=111 data-nosnippet>111</a><span class="attr">#[derive(serde::Deserialize, serde::Serialize, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Debug)]
+<a href=#112 id=112 data-nosnippet>112</a></span><span class="kw">struct </span>SecretResponseAccessToken {
+<a href=#113 id=113 data-nosnippet>113</a>    access_token: String,
+<a href=#114 id=114 data-nosnippet>114</a>    expires_in: i64,
+<a href=#115 id=115 data-nosnippet>115</a>    refresh_token: String,
+<a href=#116 id=116 data-nosnippet>116</a>    token_type: String,
+<a href=#117 id=117 data-nosnippet>117</a>    uid: String,
+<a href=#118 id=118 data-nosnippet>118</a>    account_id: String,
+<a href=#119 id=119 data-nosnippet>119</a>    scope: String,
+<a href=#120 id=120 data-nosnippet>120</a>}
+<a href=#121 id=121 data-nosnippet>121</a>
+<a href=#122 id=122 data-nosnippet>122</a><span class="attr">#[derive(serde::Deserialize, serde::Serialize, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Debug)]
+<a href=#123 id=123 data-nosnippet>123</a></span><span class="kw">struct </span>SecretResponseRefreshToken {
+<a href=#124 id=124 data-nosnippet>124</a>    access_token: String,
+<a href=#125 id=125 data-nosnippet>125</a>    expires_in: i64,
+<a href=#126 id=126 data-nosnippet>126</a>    token_type: String,
+<a href=#127 id=127 data-nosnippet>127</a>}
+<a href=#128 id=128 data-nosnippet>128</a>
+<a href=#129 id=129 data-nosnippet>129</a><span class="doccomment">/// Application state (static) is initialized only once in the main() function.
+<a href=#130 id=130 data-nosnippet>130</a>///
+<a href=#131 id=131 data-nosnippet>131</a>/// And then is accessible all over the code.
+<a href=#132 id=132 data-nosnippet>132</a></span><span class="kw">pub fn </span>dropbox_api_config_initialize() {
+<a href=#133 id=133 data-nosnippet>133</a>    <span class="kw">if </span>DROPBOX_API_CONFIG.get().is_some() {
+<a href=#134 id=134 data-nosnippet>134</a>        <span class="kw">return</span>;
+<a href=#135 id=135 data-nosnippet>135</a>    }
+<a href=#136 id=136 data-nosnippet>136</a>
+<a href=#137 id=137 data-nosnippet>137</a>    <span class="kw">let </span>dropbox_api_config_json = std::fs::read_to_string(<span class="string">"dropbox_api_config.json"</span>)
+<a href=#138 id=138 data-nosnippet>138</a>        .unwrap_or_else(|<span class="kw">_</span>| <span class="macro">panic!</span>(<span class="string">"{RED}Error: The file dropbox_api_config.json is missing.{RESET}"</span>));
+<a href=#139 id=139 data-nosnippet>139</a>    <span class="kw">let </span>dropbox_api_config: DropboxApiConfig = serde_json::from_str(<span class="kw-2">&amp;</span>dropbox_api_config_json)
+<a href=#140 id=140 data-nosnippet>140</a>        .unwrap_or_else(|<span class="kw">_</span>| <span class="macro">panic!</span>(<span class="string">"{RED}Error: The content of dropbox_api_config.json is not correct.{RESET}"</span>));
+<a href=#141 id=141 data-nosnippet>141</a>    <span class="kw">let _ </span>= DROPBOX_API_CONFIG.set(dropbox_api_config);
+<a href=#142 id=142 data-nosnippet>142</a>}
+<a href=#143 id=143 data-nosnippet>143</a>
+<a href=#144 id=144 data-nosnippet>144</a><span class="doccomment">/// Start the dropbox oauth2 PKCE code workflow
+<a href=#145 id=145 data-nosnippet>145</a>/// It will use the private key from the .ssh folder.
+<a href=#146 id=146 data-nosnippet>146</a>/// The encrypted file has the same file name with the ".enc" extension.
+<a href=#147 id=147 data-nosnippet>147</a>/// Returns access_token to use as bearer for api calls
+<a href=#148 id=148 data-nosnippet>148</a></span><span class="kw">pub fn </span>get_dropbox_secret_token(client_id: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;SecretString&gt; {
+<a href=#149 id=149 data-nosnippet>149</a>    <span class="kw">let </span>private_key_file_name = DROPBOX_API_CONFIG.get().unwrap().dropbox_api_private_key_file_name.to_string();
+<a href=#150 id=150 data-nosnippet>150</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Check if the ssh private key exists.{RESET}"</span>);
+<a href=#151 id=151 data-nosnippet>151</a>    <span class="kw">let </span>private_key_path_struct = ende::PathStructInSshFolder::new(private_key_file_name.clone())<span class="question-mark">?</span>;
+<a href=#152 id=152 data-nosnippet>152</a>    <span class="kw">if </span>!private_key_path_struct.exists() {
+<a href=#153 id=153 data-nosnippet>153</a>        <span class="macro">println!</span>(<span class="string">"{RED}Error: Private key {private_key_path_struct} does not exist.{RESET}"</span>);
+<a href=#154 id=154 data-nosnippet>154</a>        <span class="macro">println!</span>(<span class="string">"  {YELLOW}Create the private key in bash terminal:{RESET}"</span>);
+<a href=#155 id=155 data-nosnippet>155</a>        <span class="macro">println!</span>(<span class="string">r#"{GREEN}ssh-keygen -t ed25519 -f {private_key_path_struct} -C "dropbox api secret_token"{RESET}"#</span>);
+<a href=#156 id=156 data-nosnippet>156</a>        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorFromStr(<span class="string">"Private key file not found."</span>));
+<a href=#157 id=157 data-nosnippet>157</a>    }
+<a href=#158 id=158 data-nosnippet>158</a>
+<a href=#159 id=159 data-nosnippet>159</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Check if the encrypted file exists.{RESET}"</span>);
+<a href=#160 id=160 data-nosnippet>160</a>    <span class="kw">let </span>encrypted_path_struct = ende::PathStructInSshFolder::new(<span class="macro">format!</span>(<span class="string">"{private_key_file_name}.enc"</span>))<span class="question-mark">?</span>;
+<a href=#161 id=161 data-nosnippet>161</a>    <span class="kw">if </span>!encrypted_path_struct.exists() {
+<a href=#162 id=162 data-nosnippet>162</a>        <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypted file {encrypted_path_struct} does not exist.{RESET}"</span>);
+<a href=#163 id=163 data-nosnippet>163</a>        <span class="macro">println!</span>(<span class="string">"  {YELLOW}Continue to authentication with the browser{RESET}"</span>);
+<a href=#164 id=164 data-nosnippet>164</a>        <span class="kw">let </span>secret_access_token = authenticate_with_browser_and_save_file(client_id, <span class="kw-2">&amp;</span>private_key_path_struct, <span class="kw-2">&amp;</span>encrypted_path_struct)<span class="question-mark">?</span>;
+<a href=#165 id=165 data-nosnippet>165</a>        <span class="prelude-val">Ok</span>(secret_access_token)
+<a href=#166 id=166 data-nosnippet>166</a>    } <span class="kw">else </span>{
+<a href=#167 id=167 data-nosnippet>167</a>        <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypted file {encrypted_path_struct} exist.{RESET}"</span>);
+<a href=#168 id=168 data-nosnippet>168</a>        <span class="kw">let </span>plain_file_text = ende::open_file_b64_get_string(encrypted_path_struct.get_cross_path())<span class="question-mark">?</span>;
+<a href=#169 id=169 data-nosnippet>169</a>        <span class="comment">// deserialize json into struct
+<a href=#170 id=170 data-nosnippet>170</a>        </span><span class="kw">let </span>encrypted_text_with_metadata: ende::EncryptedTextWithMetadata = serde_json::from_str(<span class="kw-2">&amp;</span>plain_file_text)<span class="question-mark">?</span>;
+<a href=#171 id=171 data-nosnippet>171</a>
+<a href=#172 id=172 data-nosnippet>172</a>        <span class="comment">// check the expiration
+<a href=#173 id=173 data-nosnippet>173</a>        </span><span class="kw">let </span>utc_now = chrono::Utc::now();
+<a href=#174 id=174 data-nosnippet>174</a>
+<a href=#175 id=175 data-nosnippet>175</a>        <span class="kw">if </span>encrypted_text_with_metadata.access_token_expiration.is_none() {
+<a href=#176 id=176 data-nosnippet>176</a>            <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorFromStr(<span class="string">"access_token_expiration is None"</span>));
+<a href=#177 id=177 data-nosnippet>177</a>        }
+<a href=#178 id=178 data-nosnippet>178</a>
+<a href=#179 id=179 data-nosnippet>179</a>        <span class="kw">let </span>access_token_expiration = chrono::DateTime::parse_from_rfc3339(
+<a href=#180 id=180 data-nosnippet>180</a>            encrypted_text_with_metadata
+<a href=#181 id=181 data-nosnippet>181</a>                .access_token_expiration
+<a href=#182 id=182 data-nosnippet>182</a>                .as_ref()
+<a href=#183 id=183 data-nosnippet>183</a>                .expect(<span class="string">"The former line asserts this is never None"</span>),
+<a href=#184 id=184 data-nosnippet>184</a>        )<span class="question-mark">?</span>;
+<a href=#185 id=185 data-nosnippet>185</a>        <span class="kw">if </span>access_token_expiration &lt;= utc_now {
+<a href=#186 id=186 data-nosnippet>186</a>            <span class="macro">println!</span>(<span class="string">"{RED}Access token has expired, use refresh token{RESET}"</span>);
+<a href=#187 id=187 data-nosnippet>187</a>            <span class="kw">let </span>secret_decrypted_from_file = decrypt_text_with_metadata(encrypted_text_with_metadata)<span class="question-mark">?</span>;
+<a href=#188 id=188 data-nosnippet>188</a>            <span class="kw">let </span>secret_response_refresh_token: SecretBox&lt;SecretResponseRefreshToken&gt; =
+<a href=#189 id=189 data-nosnippet>189</a>                refresh_tokens(client_id, secret_decrypted_from_file.expose_secret().refresh_token.clone())<span class="question-mark">?</span>;
+<a href=#190 id=190 data-nosnippet>190</a>
+<a href=#191 id=191 data-nosnippet>191</a>            <span class="kw">let </span>secret_access_token = SecretString::from(secret_response_refresh_token.expose_secret().access_token.to_string());
+<a href=#192 id=192 data-nosnippet>192</a>            <span class="kw">let </span>expires_in = secret_response_refresh_token.expose_secret().expires_in;
+<a href=#193 id=193 data-nosnippet>193</a>
+<a href=#194 id=194 data-nosnippet>194</a>            <span class="comment">// create new secret_response_access_token, because the response of refresh does not have all the fields
+<a href=#195 id=195 data-nosnippet>195</a>            </span><span class="kw">let </span>secret_response_access_token = SecretResponseAccessToken {
+<a href=#196 id=196 data-nosnippet>196</a>                access_token: secret_access_token.expose_secret().to_string(),
+<a href=#197 id=197 data-nosnippet>197</a>                account_id: <span class="string">""</span>.to_string(),
+<a href=#198 id=198 data-nosnippet>198</a>                expires_in,
+<a href=#199 id=199 data-nosnippet>199</a>                refresh_token: secret_decrypted_from_file.expose_secret().refresh_token.clone(),
+<a href=#200 id=200 data-nosnippet>200</a>                scope: <span class="string">""</span>.to_string(),
+<a href=#201 id=201 data-nosnippet>201</a>                token_type: <span class="string">""</span>.to_string(),
+<a href=#202 id=202 data-nosnippet>202</a>                uid: <span class="string">""</span>.to_string(),
+<a href=#203 id=203 data-nosnippet>203</a>            };
+<a href=#204 id=204 data-nosnippet>204</a>            <span class="kw">let </span>secret_response_access_token = SecretBox::new(Box::new(secret_response_access_token));
+<a href=#205 id=205 data-nosnippet>205</a>
+<a href=#206 id=206 data-nosnippet>206</a>            <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypt data and save file{RESET}"</span>);
+<a href=#207 id=207 data-nosnippet>207</a>            encrypt_and_save_file(<span class="kw-2">&amp;</span>private_key_path_struct, <span class="kw-2">&amp;</span>encrypted_path_struct, secret_response_access_token)<span class="question-mark">?</span>;
+<a href=#208 id=208 data-nosnippet>208</a>            <span class="kw">return </span><span class="prelude-val">Ok</span>(secret_access_token);
+<a href=#209 id=209 data-nosnippet>209</a>        }
+<a href=#210 id=210 data-nosnippet>210</a>        <span class="macro">println!</span>(<span class="string">"  {YELLOW}Decrypt the file with the private key.{RESET}"</span>);
+<a href=#211 id=211 data-nosnippet>211</a>        <span class="kw">let </span>secret_response_access_token = decrypt_text_with_metadata(encrypted_text_with_metadata)<span class="question-mark">?</span>;
+<a href=#212 id=212 data-nosnippet>212</a>        <span class="kw">let </span>secret_access_token = SecretString::from(secret_response_access_token.expose_secret().access_token.clone());
+<a href=#213 id=213 data-nosnippet>213</a>        <span class="prelude-val">Ok</span>(secret_access_token)
+<a href=#214 id=214 data-nosnippet>214</a>    }
+<a href=#215 id=215 data-nosnippet>215</a>}
+<a href=#216 id=216 data-nosnippet>216</a>
+<a href=#217 id=217 data-nosnippet>217</a><span class="kw">fn </span>authenticate_with_browser_and_save_file(
+<a href=#218 id=218 data-nosnippet>218</a>    client_id: <span class="kw-2">&amp;</span>str,
+<a href=#219 id=219 data-nosnippet>219</a>    private_key_path_struct: <span class="kw-2">&amp;</span>ende::PathStructInSshFolder,
+<a href=#220 id=220 data-nosnippet>220</a>    encrypted_path_struct: <span class="kw-2">&amp;</span>ende::PathStructInSshFolder,
+<a href=#221 id=221 data-nosnippet>221</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SecretString&gt; {
+<a href=#222 id=222 data-nosnippet>222</a>    <span class="kw">let </span>secret_response_access_token: SecretBox&lt;SecretResponseAccessToken&gt; = authentication_with_browser(client_id)<span class="question-mark">?</span>;
+<a href=#223 id=223 data-nosnippet>223</a>    <span class="kw">let </span>secret_access_token = SecretString::from(secret_response_access_token.expose_secret().access_token.clone());
+<a href=#224 id=224 data-nosnippet>224</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypt data and save file{RESET}"</span>);
+<a href=#225 id=225 data-nosnippet>225</a>
+<a href=#226 id=226 data-nosnippet>226</a>    encrypt_and_save_file(private_key_path_struct, encrypted_path_struct, secret_response_access_token)<span class="question-mark">?</span>;
+<a href=#227 id=227 data-nosnippet>227</a>    <span class="prelude-val">Ok</span>(secret_access_token)
+<a href=#228 id=228 data-nosnippet>228</a>}
+<a href=#229 id=229 data-nosnippet>229</a>
+<a href=#230 id=230 data-nosnippet>230</a><span class="doccomment">/// Oauth2 PKCE code flow needs to be authenticated with a browser
+<a href=#231 id=231 data-nosnippet>231</a>/// &lt;https://dropbox.tech/developers/pkce--what-and-why-&gt;
+<a href=#232 id=232 data-nosnippet>232</a></span><span class="kw">fn </span>authentication_with_browser(client_id: <span class="kw-2">&amp;</span>str) -&gt; <span class="prelude-ty">Result</span>&lt;SecretBox&lt;SecretResponseAccessToken&gt;&gt; {
+<a href=#233 id=233 data-nosnippet>233</a>    <span class="comment">// Step 1: Client creates code_verifier and subsequent code_challenge
+<a href=#234 id=234 data-nosnippet>234</a>    // generate a random 32 bytes, then encode to base64
+<a href=#235 id=235 data-nosnippet>235</a>
+<a href=#236 id=236 data-nosnippet>236</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>random_bytes = [<span class="number">0_u8</span>; <span class="number">32</span>];
+<a href=#237 id=237 data-nosnippet>237</a>    <span class="kw">use </span>aes_gcm::aead::rand_core::RngCore;
+<a href=#238 id=238 data-nosnippet>238</a>    aes_gcm::aead::OsRng.fill_bytes(<span class="kw-2">&amp;mut </span>random_bytes);
+<a href=#239 id=239 data-nosnippet>239</a>    <span class="kw">let </span>code_verifier = &lt;base64ct::Base64UrlUnpadded <span class="kw">as </span>base64ct::Encoding&gt;::encode_string(<span class="kw-2">&amp;</span>random_bytes);
+<a href=#240 id=240 data-nosnippet>240</a>
+<a href=#241 id=241 data-nosnippet>241</a>    <span class="kw">let </span>code_challenge_bytes = rsa::sha2::Sha256::digest(code_verifier.as_bytes());
+<a href=#242 id=242 data-nosnippet>242</a>    <span class="kw">let </span>code_challenge = &lt;base64ct::Base64UrlUnpadded <span class="kw">as </span>base64ct::Encoding&gt;::encode_string(<span class="kw-2">&amp;</span>code_challenge_bytes);
+<a href=#243 id=243 data-nosnippet>243</a>
+<a href=#244 id=244 data-nosnippet>244</a>    <span class="comment">// Step 2: Client sends code_challenge and code_challenge_method to /oauth2/authorize
+<a href=#245 id=245 data-nosnippet>245</a>    </span><span class="kw">let </span>url = <span class="macro">format!</span>(<span class="string">"https://www.dropbox.com/oauth2/authorize?client_id={client_id}&amp;response_type=code&amp;token_access_type=offline&amp;code_challenge={code_challenge}&amp;code_challenge_method=S256"</span>);
+<a href=#246 id=246 data-nosnippet>246</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Open authorization web page in browser and allow access: {RESET}"</span>);
+<a href=#247 id=247 data-nosnippet>247</a>    <span class="macro">println!</span>(<span class="string">"{GREEN}{url}{RESET}"</span>);
+<a href=#248 id=248 data-nosnippet>248</a>
+<a href=#249 id=249 data-nosnippet>249</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Copy-paste the access_code:{RESET}"</span>);
+<a href=#250 id=250 data-nosnippet>250</a>
+<a href=#251 id=251 data-nosnippet>251</a>    <span class="comment">// the access code could be sent to to the redirect_uri. But I don't know if that makes it easier for me.
+<a href=#252 id=252 data-nosnippet>252</a>    // Instead the user can just copy paste from the browser. I think it needs to be done just once.
+<a href=#253 id=253 data-nosnippet>253</a>    </span><span class="kw">let </span>access_code = inquire::Password::new(<span class="string">""</span>).without_confirmation().prompt().unwrap();
+<a href=#254 id=254 data-nosnippet>254</a>
+<a href=#255 id=255 data-nosnippet>255</a>    <span class="comment">// Step 4: Client sends authorization_code and code_verifier to /oauth2/token
+<a href=#256 id=256 data-nosnippet>256</a>    </span><span class="kw">let </span>params = [
+<a href=#257 id=257 data-nosnippet>257</a>        (<span class="string">"grant_type"</span>, <span class="string">"authorization_code"</span>),
+<a href=#258 id=258 data-nosnippet>258</a>        (<span class="string">"code"</span>, <span class="kw-2">&amp;</span>access_code),
+<a href=#259 id=259 data-nosnippet>259</a>        (<span class="string">"code_verifier"</span>, <span class="kw-2">&amp;</span>code_verifier),
+<a href=#260 id=260 data-nosnippet>260</a>        (<span class="string">"client_id"</span>, client_id),
+<a href=#261 id=261 data-nosnippet>261</a>    ];
+<a href=#262 id=262 data-nosnippet>262</a>
+<a href=#263 id=263 data-nosnippet>263</a>    <span class="kw">let </span>request = reqwest::blocking::Client::new()
+<a href=#264 id=264 data-nosnippet>264</a>        .post(<span class="string">"https://api.dropbox.com/oauth2/token"</span>)
+<a href=#265 id=265 data-nosnippet>265</a>        .form(<span class="kw-2">&amp;</span>params);
+<a href=#266 id=266 data-nosnippet>266</a>
+<a href=#267 id=267 data-nosnippet>267</a>    <span class="kw">let </span>response = request.send().unwrap();
+<a href=#268 id=268 data-nosnippet>268</a>    <span class="kw">let </span>response_str = response.text().unwrap();
+<a href=#269 id=269 data-nosnippet>269</a>
+<a href=#270 id=270 data-nosnippet>270</a>    <span class="comment">/*
+<a href=#271 id=271 data-nosnippet>271</a>    response json
+<a href=#272 id=272 data-nosnippet>272</a>    {
+<a href=#273 id=273 data-nosnippet>273</a>    "access_token": "NW7lYmEWHgUAAAAAAAAAAbeutI8iL5CuBik9_CPD5r83XvcQPt-7O5diOdUUcsuX",
+<a href=#274 id=274 data-nosnippet>274</a>    "expires_in": 14399,
+<a href=#275 id=275 data-nosnippet>275</a>    "token_type": "bearer",
+<a href=#276 id=276 data-nosnippet>276</a>    "uid": "2589992144",
+<a href=#277 id=277 data-nosnippet>277</a>    "account_id": "dbid:AABuX9g9fD88U8z6tXxu7rcVSo64ADcrWnBMk",
+<a href=#278 id=278 data-nosnippet>278</a>    "scope": "account_info.read contacts.write file_requests.read file_requests.write files.content.read files.content.write files.metadata.read files.metadata.write"
+<a href=#279 id=279 data-nosnippet>279</a>    }
+<a href=#280 id=280 data-nosnippet>280</a>    */
+<a href=#281 id=281 data-nosnippet>281</a>
+<a href=#282 id=282 data-nosnippet>282</a>    </span><span class="kw">let </span>secret_response_access_token: SecretResponseAccessToken = serde_json::from_str(<span class="kw-2">&amp;</span>response_str).unwrap();
+<a href=#283 id=283 data-nosnippet>283</a>
+<a href=#284 id=284 data-nosnippet>284</a>    <span class="prelude-val">Ok</span>(SecretBox::new(Box::new(secret_response_access_token)))
+<a href=#285 id=285 data-nosnippet>285</a>}
+<a href=#286 id=286 data-nosnippet>286</a>
+<a href=#287 id=287 data-nosnippet>287</a><span class="doccomment">/// use refresh token to get new access_token and refresh_token
+<a href=#288 id=288 data-nosnippet>288</a></span><span class="kw">fn </span>refresh_tokens(client_id: <span class="kw-2">&amp;</span>str, refresh_token: String) -&gt; <span class="prelude-ty">Result</span>&lt;SecretBox&lt;SecretResponseRefreshToken&gt;&gt; {
+<a href=#289 id=289 data-nosnippet>289</a>    <span class="comment">// https://developers.dropbox.com/oauth-guide#implementing-oauth
+<a href=#290 id=290 data-nosnippet>290</a>
+<a href=#291 id=291 data-nosnippet>291</a>    </span><span class="attr">#[derive(serde::Serialize)]
+<a href=#292 id=292 data-nosnippet>292</a>    </span><span class="kw">struct </span>RequestWithRefreshToken {
+<a href=#293 id=293 data-nosnippet>293</a>        client_id: String,
+<a href=#294 id=294 data-nosnippet>294</a>        grant_type: String,
+<a href=#295 id=295 data-nosnippet>295</a>        refresh_token: String,
+<a href=#296 id=296 data-nosnippet>296</a>    }
+<a href=#297 id=297 data-nosnippet>297</a>    <span class="comment">// TODO: refresh for dropbox
+<a href=#298 id=298 data-nosnippet>298</a>    </span><span class="macro">println!</span>(<span class="string">"  {YELLOW}Send request with refresh_token and retrieve access tokens{RESET}"</span>);
+<a href=#299 id=299 data-nosnippet>299</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}wait...{RESET}"</span>);
+<a href=#300 id=300 data-nosnippet>300</a>
+<a href=#301 id=301 data-nosnippet>301</a>    <span class="kw">let </span>params = [
+<a href=#302 id=302 data-nosnippet>302</a>        (<span class="string">"grant_type"</span>, <span class="string">"refresh_token"</span>),
+<a href=#303 id=303 data-nosnippet>303</a>        (<span class="string">"refresh_token"</span>, <span class="kw-2">&amp;</span>refresh_token),
+<a href=#304 id=304 data-nosnippet>304</a>        (<span class="string">"client_id"</span>, client_id),
+<a href=#305 id=305 data-nosnippet>305</a>    ];
+<a href=#306 id=306 data-nosnippet>306</a>
+<a href=#307 id=307 data-nosnippet>307</a>    <span class="kw">let </span>request = reqwest::blocking::Client::new()
+<a href=#308 id=308 data-nosnippet>308</a>        .post(<span class="string">"https://api.dropbox.com/oauth2/token"</span>)
+<a href=#309 id=309 data-nosnippet>309</a>        .form(<span class="kw-2">&amp;</span>params);
+<a href=#310 id=310 data-nosnippet>310</a>
+<a href=#311 id=311 data-nosnippet>311</a>    <span class="kw">let </span>response = request.send().unwrap();
+<a href=#312 id=312 data-nosnippet>312</a>    <span class="kw">let </span>response_str = response.text().unwrap();
+<a href=#313 id=313 data-nosnippet>313</a>    <span class="kw">let </span>secret_response_refresh_token: SecretResponseRefreshToken = serde_json::from_str(<span class="kw-2">&amp;</span>response_str).unwrap();
+<a href=#314 id=314 data-nosnippet>314</a>
+<a href=#315 id=315 data-nosnippet>315</a>    <span class="prelude-val">Ok</span>(SecretBox::new(Box::new(secret_response_refresh_token)))
+<a href=#316 id=316 data-nosnippet>316</a>}
+<a href=#317 id=317 data-nosnippet>317</a>
+<a href=#318 id=318 data-nosnippet>318</a><span class="doccomment">/// encrypt and save file
+<a href=#319 id=319 data-nosnippet>319</a>///
+<a href=#320 id=320 data-nosnippet>320</a>/// The "seed" are just some random 32 bytes.
+<a href=#321 id=321 data-nosnippet>321</a>/// The "seed" will be "signed" with the private key.
+<a href=#322 id=322 data-nosnippet>322</a>/// Only the "owner" can unlock the private key and sign correctly.
+<a href=#323 id=323 data-nosnippet>323</a>/// This signature will be used as the true passcode for symmetrical encryption.
+<a href=#324 id=324 data-nosnippet>324</a>/// The "seed" and the private key path will be stored in plain text in the file
+<a href=#325 id=325 data-nosnippet>325</a>/// together with the encrypted data in json format.
+<a href=#326 id=326 data-nosnippet>326</a>/// To avoid plain text in the end encode in base64 just for obfuscate a little bit.
+<a href=#327 id=327 data-nosnippet>327</a></span><span class="kw">fn </span>encrypt_and_save_file(
+<a href=#328 id=328 data-nosnippet>328</a>    private_key_path_struct: <span class="kw-2">&amp;</span>ende::PathStructInSshFolder,
+<a href=#329 id=329 data-nosnippet>329</a>    encrypted_path_struct: <span class="kw-2">&amp;</span>ende::PathStructInSshFolder,
+<a href=#330 id=330 data-nosnippet>330</a>    secret_response_access_token: SecretBox&lt;SecretResponseAccessToken&gt;,
+<a href=#331 id=331 data-nosnippet>331</a>) -&gt; <span class="prelude-ty">Result</span>&lt;()&gt; {
+<a href=#332 id=332 data-nosnippet>332</a>    <span class="kw">let </span>secret_string = SecretString::from(serde_json::to_string(<span class="kw-2">&amp;</span>secret_response_access_token.expose_secret())<span class="question-mark">?</span>);
+<a href=#333 id=333 data-nosnippet>333</a>
+<a href=#334 id=334 data-nosnippet>334</a>    <span class="kw">let </span>(plain_seed_bytes_32bytes, plain_seed_string) = <span class="kw">crate</span>::encrypt_decrypt_mod::random_seed_32bytes_and_string()<span class="question-mark">?</span>;
+<a href=#335 id=335 data-nosnippet>335</a>
+<a href=#336 id=336 data-nosnippet>336</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Unlock private key to encrypt the secret symmetrically{RESET}"</span>);
+<a href=#337 id=337 data-nosnippet>337</a>    <span class="kw">let </span>secret_passcode_32bytes: SecretBox&lt;[u8; <span class="number">32</span>]&gt; =
+<a href=#338 id=338 data-nosnippet>338</a>        ende::sign_seed_with_ssh_agent_or_private_key_file(private_key_path_struct, plain_seed_bytes_32bytes)<span class="question-mark">?</span>;
+<a href=#339 id=339 data-nosnippet>339</a>
+<a href=#340 id=340 data-nosnippet>340</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypt the secret symmetrically {RESET}"</span>);
+<a href=#341 id=341 data-nosnippet>341</a>    <span class="kw">let </span>encrypted_string = ende::encrypt_symmetric(secret_passcode_32bytes, secret_string)<span class="question-mark">?</span>;
+<a href=#342 id=342 data-nosnippet>342</a>
+<a href=#343 id=343 data-nosnippet>343</a>    <span class="comment">// the file will contain json with 3 plain text fields: fingerprint, seed, encrypted, expiration
+<a href=#344 id=344 data-nosnippet>344</a>
+<a href=#345 id=345 data-nosnippet>345</a>    // calculate expiration minus 10 minutes or 600 seconds
+<a href=#346 id=346 data-nosnippet>346</a>    </span><span class="kw">let </span>utc_now = chrono::Utc::now();
+<a href=#347 id=347 data-nosnippet>347</a>    <span class="kw">let </span>access_token_expiration = utc_now
+<a href=#348 id=348 data-nosnippet>348</a>        .checked_add_signed(chrono::Duration::seconds(
+<a href=#349 id=349 data-nosnippet>349</a>            secret_response_access_token.expose_secret().expires_in - <span class="number">600</span>,
+<a href=#350 id=350 data-nosnippet>350</a>        ))
+<a href=#351 id=351 data-nosnippet>351</a>        .ok_or_else(|| Error::ErrorFromStr(<span class="string">"checked_add_signed"</span>))<span class="question-mark">?
+<a href=#352 id=352 data-nosnippet>352</a>        </span>.to_rfc3339();
+<a href=#353 id=353 data-nosnippet>353</a>
+<a href=#354 id=354 data-nosnippet>354</a>    <span class="kw">let </span>encrypted_text_with_metadata = ende::EncryptedTextWithMetadata {
+<a href=#355 id=355 data-nosnippet>355</a>        private_key_file_name: private_key_path_struct.get_file_name().to_string(),
+<a href=#356 id=356 data-nosnippet>356</a>        plain_seed_string,
+<a href=#357 id=357 data-nosnippet>357</a>        plain_encrypted_text: encrypted_string,
+<a href=#358 id=358 data-nosnippet>358</a>        access_token_expiration: <span class="prelude-val">Some</span>(access_token_expiration),
+<a href=#359 id=359 data-nosnippet>359</a>        token_name: <span class="prelude-val">None</span>,
+<a href=#360 id=360 data-nosnippet>360</a>    };
+<a href=#361 id=361 data-nosnippet>361</a>    <span class="kw">let </span>plain_file_text = serde_json::to_string_pretty(<span class="kw-2">&amp;</span>encrypted_text_with_metadata)<span class="question-mark">?</span>;
+<a href=#362 id=362 data-nosnippet>362</a>    <span class="comment">// encode it just to obscure it a little bit
+<a href=#363 id=363 data-nosnippet>363</a>    </span><span class="kw">let </span>file_text = ende::encode64_from_string_to_string(<span class="kw-2">&amp;</span>plain_file_text);
+<a href=#364 id=364 data-nosnippet>364</a>
+<a href=#365 id=365 data-nosnippet>365</a>    <span class="kw">let </span><span class="kw-2">mut </span>file = std::fs::File::create(encrypted_path_struct.get_full_file_path())<span class="question-mark">?</span>;
+<a href=#366 id=366 data-nosnippet>366</a>    <span class="attr">#[cfg(target_family = <span class="string">"unix"</span>)]
+<a href=#367 id=367 data-nosnippet>367</a>    </span>{
+<a href=#368 id=368 data-nosnippet>368</a>        <span class="kw">let </span>metadata = file.metadata()<span class="question-mark">?</span>;
+<a href=#369 id=369 data-nosnippet>369</a>        <span class="kw">let </span><span class="kw-2">mut </span>permissions = metadata.permissions();
+<a href=#370 id=370 data-nosnippet>370</a>        std::os::unix::fs::PermissionsExt::set_mode(<span class="kw-2">&amp;mut </span>permissions, <span class="number">0o600</span>);
+<a href=#371 id=371 data-nosnippet>371</a>    }
+<a href=#372 id=372 data-nosnippet>372</a>    std::io::Write::write_all(<span class="kw-2">&amp;mut </span>file, file_text.as_bytes())<span class="question-mark">?</span>;
+<a href=#373 id=373 data-nosnippet>373</a>
+<a href=#374 id=374 data-nosnippet>374</a>    <span class="macro">println!</span>(<span class="string">"  {YELLOW}Encrypted text saved to file.{RESET}"</span>);
+<a href=#375 id=375 data-nosnippet>375</a>
+<a href=#376 id=376 data-nosnippet>376</a>    <span class="prelude-val">Ok</span>(())
+<a href=#377 id=377 data-nosnippet>377</a>}
+<a href=#378 id=378 data-nosnippet>378</a>
+<a href=#379 id=379 data-nosnippet>379</a><span class="doccomment">/// decrypt text with metadata
+<a href=#380 id=380 data-nosnippet>380</a>///
+<a href=#381 id=381 data-nosnippet>381</a>/// The encrypted file is encoded in base64 just to obfuscate it a little bit.  
+<a href=#382 id=382 data-nosnippet>382</a>/// In json format in plain text there is the "seed", the private key path and the encrypted secret.  
+<a href=#383 id=383 data-nosnippet>383</a>/// The "seed" will be "signed" with the private key.  
+<a href=#384 id=384 data-nosnippet>384</a>/// Only the "owner" can unlock the private key and sign correctly.  
+<a href=#385 id=385 data-nosnippet>385</a>/// This signature will be used as the true passcode for symmetrical decryption.  
+<a href=#386 id=386 data-nosnippet>386</a></span><span class="kw">fn </span>decrypt_text_with_metadata(
+<a href=#387 id=387 data-nosnippet>387</a>    encrypted_text_with_metadata: ende::EncryptedTextWithMetadata,
+<a href=#388 id=388 data-nosnippet>388</a>) -&gt; <span class="prelude-ty">Result</span>&lt;SecretBox&lt;SecretResponseAccessToken&gt;&gt; {
+<a href=#389 id=389 data-nosnippet>389</a>    <span class="comment">// the private key file is written inside the file
+<a href=#390 id=390 data-nosnippet>390</a>    </span><span class="kw">let </span>private_key_path_struct = ende::PathStructInSshFolder::new(encrypted_text_with_metadata.private_key_file_name.clone())<span class="question-mark">?</span>;
+<a href=#391 id=391 data-nosnippet>391</a>    <span class="kw">if </span>!private_key_path_struct.exists() {
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="kw">return </span><span class="prelude-val">Err</span>(Error::ErrorFromStr(
+<a href=#393 id=393 data-nosnippet>393</a>            <span class="string">"{RED}Error: File {private_key_path_struct} does not exist! {RESET}"</span>,
+<a href=#394 id=394 data-nosnippet>394</a>        ));
+<a href=#395 id=395 data-nosnippet>395</a>    }
+<a href=#396 id=396 data-nosnippet>396</a>
+<a href=#397 id=397 data-nosnippet>397</a>    <span class="kw">let </span>plain_seed_bytes_32bytes = ende::decode64_from_string_to_32bytes(<span class="kw-2">&amp;</span>encrypted_text_with_metadata.plain_seed_string)<span class="question-mark">?</span>;
+<a href=#398 id=398 data-nosnippet>398</a>    <span class="comment">// first try to use the private key from ssh-agent, else use the private file with user interaction
+<a href=#399 id=399 data-nosnippet>399</a>    </span><span class="kw">let </span>secret_passcode_32bytes: SecretBox&lt;[u8; <span class="number">32</span>]&gt; =
+<a href=#400 id=400 data-nosnippet>400</a>        ende::sign_seed_with_ssh_agent_or_private_key_file(<span class="kw-2">&amp;</span>private_key_path_struct, plain_seed_bytes_32bytes)<span class="question-mark">?</span>;
+<a href=#401 id=401 data-nosnippet>401</a>    <span class="comment">// decrypt the data
+<a href=#402 id=402 data-nosnippet>402</a>    </span><span class="kw">let </span>decrypted_string = ende::decrypt_symmetric(secret_passcode_32bytes, encrypted_text_with_metadata.plain_encrypted_text)<span class="question-mark">?</span>;
+<a href=#403 id=403 data-nosnippet>403</a>    <span class="comment">// parse json to struct
+<a href=#404 id=404 data-nosnippet>404</a>    </span><span class="kw">let </span>secret_response_access_token: SecretBox&lt;SecretResponseAccessToken&gt; =
+<a href=#405 id=405 data-nosnippet>405</a>        SecretBox::new(Box::new(serde_json::from_str(decrypted_string.expose_secret())<span class="question-mark">?</span>));
+<a href=#406 id=406 data-nosnippet>406</a>    <span class="prelude-val">Ok</span>(secret_response_access_token)
+<a href=#407 id=407 data-nosnippet>407</a>}</code></pre></div></section></main></body></html>

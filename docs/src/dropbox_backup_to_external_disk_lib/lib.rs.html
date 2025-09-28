@@ -4,71 +4,74 @@
 <a href=#4 id=4 data-nosnippet>4</a>
 <a href=#5 id=5 data-nosnippet>5</a></span><span class="kw">mod </span>app_state_mod;
 <a href=#6 id=6 data-nosnippet>6</a><span class="kw">mod </span>compare_mod;
-<a href=#7 id=7 data-nosnippet>7</a><span class="kw">mod </span>error_mod;
-<a href=#8 id=8 data-nosnippet>8</a><span class="kw">mod </span>file_txt_mod;
-<a href=#9 id=9 data-nosnippet>9</a><span class="kw">mod </span>local_disk_mod;
-<a href=#10 id=10 data-nosnippet>10</a><span class="kw">mod </span>remote_dropbox_mod;
-<a href=#11 id=11 data-nosnippet>11</a><span class="kw">mod </span>utils_mod;
-<a href=#12 id=12 data-nosnippet>12</a>
-<a href=#13 id=13 data-nosnippet>13</a><span class="comment">// export public code to the bin project
-<a href=#14 id=14 data-nosnippet>14</a></span><span class="kw">pub use </span><span class="kw">crate</span>::app_state_mod::{global_app_state, global_config, AppConfig, AppStateMethods, APP_STATE};
-<a href=#15 id=15 data-nosnippet>15</a><span class="kw">pub use </span><span class="kw">crate</span>::compare_mod::{compare_files, compare_folders};
-<a href=#16 id=16 data-nosnippet>16</a><span class="kw">pub use </span><span class="kw">crate</span>::error_mod::DropboxBackupToExternalDiskError;
-<a href=#17 id=17 data-nosnippet>17</a><span class="kw">pub use </span><span class="kw">crate</span>::file_txt_mod::FileTxt;
-<a href=#18 id=18 data-nosnippet>18</a><span class="kw">pub use </span><span class="kw">crate</span>::local_disk_mod::{
-<a href=#19 id=19 data-nosnippet>19</a>    change_time_files, create_folders, list_local, move_local_files, read_only_remove, rename_local_files, trash_files, trash_folders,
-<a href=#20 id=20 data-nosnippet>20</a>};
-<a href=#21 id=21 data-nosnippet>21</a><span class="kw">pub use </span><span class="kw">crate</span>::remote_dropbox_mod::{download_from_list, download_one_file, encode_token, list_remote, test_connection};
-<a href=#22 id=22 data-nosnippet>22</a><span class="kw">pub use </span><span class="kw">crate</span>::utils_mod::{shorten_string, sort_string_lines};
-<a href=#23 id=23 data-nosnippet>23</a>
-<a href=#24 id=24 data-nosnippet>24</a><span class="comment">/*
-<a href=#25 id=25 data-nosnippet>25</a>/// list and sync is the complete process for backup in one command
-<a href=#26 id=26 data-nosnippet>26</a>pub fn list_and_sync(ext_disk_base_path: &amp;str, app_config: &amp;'static AppConfig) {
-<a href=#27 id=27 data-nosnippet>27</a>    all_list_remote_and_local(ext_disk_base_path, app_config);
-<a href=#28 id=28 data-nosnippet>28</a>    press_enter_to_continue_timeout_5_sec();
-<a href=#29 id=29 data-nosnippet>29</a>    sync_only(app_config);
-<a href=#30 id=30 data-nosnippet>30</a>}
-<a href=#31 id=31 data-nosnippet>31</a>
-<a href=#32 id=32 data-nosnippet>32</a>/// all list remote and local
-<a href=#33 id=33 data-nosnippet>33</a>pub fn all_list_remote_and_local(ext_disk_base_path: &amp;str, app_config: &amp;'static AppConfig) {
-<a href=#34 id=34 data-nosnippet>34</a>    let _hide_cursor_terminal = crate::start_hide_cursor_terminal();
-<a href=#35 id=35 data-nosnippet>35</a>    println!("{}{}dropbox_backup_to_external_disk_cli list_and_sync{}", at_line(1), *YELLOW, *RESET);
-<a href=#36 id=36 data-nosnippet>36</a>    ns_start("");
-<a href=#37 id=37 data-nosnippet>37</a>    // start 2 threads, first for remote list and second for local list
-<a href=#38 id=38 data-nosnippet>38</a>    use std::thread;
-<a href=#39 id=39 data-nosnippet>39</a>    let ext_disk_base_path = ext_disk_base_path.to_string();
-<a href=#40 id=40 data-nosnippet>40</a>    let handle_2 = thread::spawn(move || {
-<a href=#41 id=41 data-nosnippet>41</a>        println!("{}{}3 threads for source (remote files):{}", at_line(3), *GREEN, *RESET);
-<a href=#42 id=42 data-nosnippet>42</a>        // prints at rows 4,5,6 and 7,8,9
-<a href=#43 id=43 data-nosnippet>43</a>        list_remote(app_config);
-<a href=#44 id=44 data-nosnippet>44</a>    });
-<a href=#45 id=45 data-nosnippet>45</a>    let handle_1 = thread::spawn(move || {
-<a href=#46 id=46 data-nosnippet>46</a>        println!("{}{}1 thread for destination (local files):{}", at_line(12), *GREEN, *RESET);
-<a href=#47 id=47 data-nosnippet>47</a>        // prints at rows 13,14,15,16
-<a href=#48 id=48 data-nosnippet>48</a>        list_local(&amp;ext_disk_base_path, app_config);
-<a href=#49 id=49 data-nosnippet>49</a>    });
-<a href=#50 id=50 data-nosnippet>50</a>    // wait for both threads to finish
-<a href=#51 id=51 data-nosnippet>51</a>    handle_1.join().unwrap();
-<a href=#52 id=52 data-nosnippet>52</a>    handle_2.join().unwrap();
-<a href=#53 id=53 data-nosnippet>53</a>
-<a href=#54 id=54 data-nosnippet>54</a>    println!("{}{}", at_line(20), *CLEAR_LINE);
-<a href=#55 id=55 data-nosnippet>55</a>}
+<a href=#7 id=7 data-nosnippet>7</a><span class="kw">mod </span>dropbox_api_token_with_oauth2_mod;
+<a href=#8 id=8 data-nosnippet>8</a><span class="kw">mod </span>encrypt_decrypt_mod;
+<a href=#9 id=9 data-nosnippet>9</a><span class="kw">mod </span>error_mod;
+<a href=#10 id=10 data-nosnippet>10</a><span class="kw">mod </span>file_txt_mod;
+<a href=#11 id=11 data-nosnippet>11</a><span class="kw">mod </span>local_disk_mod;
+<a href=#12 id=12 data-nosnippet>12</a><span class="kw">mod </span>remote_dropbox_mod;
+<a href=#13 id=13 data-nosnippet>13</a><span class="kw">mod </span>utils_mod;
+<a href=#14 id=14 data-nosnippet>14</a>
+<a href=#15 id=15 data-nosnippet>15</a><span class="comment">// export public code to the bin project
+<a href=#16 id=16 data-nosnippet>16</a></span><span class="kw">pub use </span><span class="kw">crate</span>::app_state_mod::{global_app_state, global_config, AppConfig, AppStateMethods, APP_STATE};
+<a href=#17 id=17 data-nosnippet>17</a><span class="kw">pub use </span><span class="kw">crate</span>::compare_mod::{compare_files, compare_folders};
+<a href=#18 id=18 data-nosnippet>18</a><span class="kw">pub use </span><span class="kw">crate</span>::dropbox_api_token_with_oauth2_mod::dropbox_api_config_initialize;
+<a href=#19 id=19 data-nosnippet>19</a><span class="kw">pub use </span><span class="kw">crate</span>::error_mod::{Error, <span class="prelude-ty">Result</span>};
+<a href=#20 id=20 data-nosnippet>20</a><span class="kw">pub use </span><span class="kw">crate</span>::file_txt_mod::FileTxt;
+<a href=#21 id=21 data-nosnippet>21</a><span class="kw">pub use </span><span class="kw">crate</span>::local_disk_mod::{
+<a href=#22 id=22 data-nosnippet>22</a>    change_time_files, create_folders, list_local, move_local_files, read_only_remove, rename_local_files, trash_files, trash_folders,
+<a href=#23 id=23 data-nosnippet>23</a>};
+<a href=#24 id=24 data-nosnippet>24</a><span class="kw">pub use </span><span class="kw">crate</span>::remote_dropbox_mod::{download_from_list, download_one_file, encode_token, list_remote, test_connection};
+<a href=#25 id=25 data-nosnippet>25</a><span class="kw">pub use </span><span class="kw">crate</span>::utils_mod::{shorten_string, sort_string_lines};
+<a href=#26 id=26 data-nosnippet>26</a>
+<a href=#27 id=27 data-nosnippet>27</a><span class="comment">/*
+<a href=#28 id=28 data-nosnippet>28</a>/// list and sync is the complete process for backup in one command
+<a href=#29 id=29 data-nosnippet>29</a>pub fn list_and_sync(ext_disk_base_path: &amp;str, app_config: &amp;'static AppConfig) {
+<a href=#30 id=30 data-nosnippet>30</a>    all_list_remote_and_local(ext_disk_base_path, app_config);
+<a href=#31 id=31 data-nosnippet>31</a>    press_enter_to_continue_timeout_5_sec();
+<a href=#32 id=32 data-nosnippet>32</a>    sync_only(app_config);
+<a href=#33 id=33 data-nosnippet>33</a>}
+<a href=#34 id=34 data-nosnippet>34</a>
+<a href=#35 id=35 data-nosnippet>35</a>/// all list remote and local
+<a href=#36 id=36 data-nosnippet>36</a>pub fn all_list_remote_and_local(ext_disk_base_path: &amp;str, app_config: &amp;'static AppConfig) {
+<a href=#37 id=37 data-nosnippet>37</a>    let _hide_cursor_terminal = crate::start_hide_cursor_terminal();
+<a href=#38 id=38 data-nosnippet>38</a>    println!("{}{}dropbox_backup_to_external_disk_cli list_and_sync{}", at_line(1), *YELLOW, *RESET);
+<a href=#39 id=39 data-nosnippet>39</a>    ns_start("");
+<a href=#40 id=40 data-nosnippet>40</a>    // start 2 threads, first for remote list and second for local list
+<a href=#41 id=41 data-nosnippet>41</a>    use std::thread;
+<a href=#42 id=42 data-nosnippet>42</a>    let ext_disk_base_path = ext_disk_base_path.to_string();
+<a href=#43 id=43 data-nosnippet>43</a>    let handle_2 = thread::spawn(move || {
+<a href=#44 id=44 data-nosnippet>44</a>        println!("{}{}3 threads for source (remote files):{}", at_line(3), *GREEN, *RESET);
+<a href=#45 id=45 data-nosnippet>45</a>        // prints at rows 4,5,6 and 7,8,9
+<a href=#46 id=46 data-nosnippet>46</a>        list_remote(app_config);
+<a href=#47 id=47 data-nosnippet>47</a>    });
+<a href=#48 id=48 data-nosnippet>48</a>    let handle_1 = thread::spawn(move || {
+<a href=#49 id=49 data-nosnippet>49</a>        println!("{}{}1 thread for destination (local files):{}", at_line(12), *GREEN, *RESET);
+<a href=#50 id=50 data-nosnippet>50</a>        // prints at rows 13,14,15,16
+<a href=#51 id=51 data-nosnippet>51</a>        list_local(&amp;ext_disk_base_path, app_config);
+<a href=#52 id=52 data-nosnippet>52</a>    });
+<a href=#53 id=53 data-nosnippet>53</a>    // wait for both threads to finish
+<a href=#54 id=54 data-nosnippet>54</a>    handle_1.join().unwrap();
+<a href=#55 id=55 data-nosnippet>55</a>    handle_2.join().unwrap();
 <a href=#56 id=56 data-nosnippet>56</a>
-<a href=#57 id=57 data-nosnippet>57</a>/// sync_only can be stopped with ctrl+c and then restarted if downloading takes lots of time.
-<a href=#58 id=58 data-nosnippet>58</a>/// No need to repeat the "list" that takes lots of times.
-<a href=#59 id=59 data-nosnippet>59</a>pub fn sync_only(app_config: &amp;'static AppConfig) {
-<a href=#60 id=60 data-nosnippet>60</a>    println!("{}compare remote and local lists{}", *YELLOW, *RESET);
-<a href=#61 id=61 data-nosnippet>61</a>    compare_files(app_config);
-<a href=#62 id=62 data-nosnippet>62</a>    println!("{}move equal files{}", *YELLOW, *RESET);
-<a href=#63 id=63 data-nosnippet>63</a>    move_local_files(app_config);
-<a href=#64 id=64 data-nosnippet>64</a>    println!("{}rename equal files{}", *YELLOW, *RESET);
-<a href=#65 id=65 data-nosnippet>65</a>    rename_local_files(app_config);
-<a href=#66 id=66 data-nosnippet>66</a>    println!("{}move to trash from list{}", *YELLOW, *RESET);
-<a href=#67 id=67 data-nosnippet>67</a>    trash_files(app_config);
-<a href=#68 id=68 data-nosnippet>68</a>    press_enter_to_continue_timeout_5_sec();
-<a href=#69 id=69 data-nosnippet>69</a>    download_from_list(app_config);
-<a href=#70 id=70 data-nosnippet>70</a>}
-<a href=#71 id=71 data-nosnippet>71</a>
-<a href=#72 id=72 data-nosnippet>72</a>
-<a href=#73 id=73 data-nosnippet>73</a>
-<a href=#74 id=74 data-nosnippet>74</a> */</span></code></pre></div></section></main></body></html>
+<a href=#57 id=57 data-nosnippet>57</a>    println!("{}{}", at_line(20), *CLEAR_LINE);
+<a href=#58 id=58 data-nosnippet>58</a>}
+<a href=#59 id=59 data-nosnippet>59</a>
+<a href=#60 id=60 data-nosnippet>60</a>/// sync_only can be stopped with ctrl+c and then restarted if downloading takes lots of time.
+<a href=#61 id=61 data-nosnippet>61</a>/// No need to repeat the "list" that takes lots of times.
+<a href=#62 id=62 data-nosnippet>62</a>pub fn sync_only(app_config: &amp;'static AppConfig) {
+<a href=#63 id=63 data-nosnippet>63</a>    println!("{}compare remote and local lists{}", *YELLOW, *RESET);
+<a href=#64 id=64 data-nosnippet>64</a>    compare_files(app_config);
+<a href=#65 id=65 data-nosnippet>65</a>    println!("{}move equal files{}", *YELLOW, *RESET);
+<a href=#66 id=66 data-nosnippet>66</a>    move_local_files(app_config);
+<a href=#67 id=67 data-nosnippet>67</a>    println!("{}rename equal files{}", *YELLOW, *RESET);
+<a href=#68 id=68 data-nosnippet>68</a>    rename_local_files(app_config);
+<a href=#69 id=69 data-nosnippet>69</a>    println!("{}move to trash from list{}", *YELLOW, *RESET);
+<a href=#70 id=70 data-nosnippet>70</a>    trash_files(app_config);
+<a href=#71 id=71 data-nosnippet>71</a>    press_enter_to_continue_timeout_5_sec();
+<a href=#72 id=72 data-nosnippet>72</a>    download_from_list(app_config);
+<a href=#73 id=73 data-nosnippet>73</a>}
+<a href=#74 id=74 data-nosnippet>74</a>
+<a href=#75 id=75 data-nosnippet>75</a>
+<a href=#76 id=76 data-nosnippet>76</a>
+<a href=#77 id=77 data-nosnippet>77</a> */</span></code></pre></div></section></main></body></html>

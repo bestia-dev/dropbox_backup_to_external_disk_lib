@@ -1,2 +1,2 @@
-createSrcSidebar('[["dropbox_backup_to_external_disk_lib",["",[],["app_state_mod.rs","compare_mod.rs","error_mod.rs","file_txt_mod.rs","lib.rs","local_disk_mod.rs","remote_dropbox_mod.rs","utils_mod.rs"]]]]');
-//{"start":19,"fragment_lengths":[186]}
+createSrcSidebar('[["dropbox_backup_to_external_disk_lib",["",[],["app_state_mod.rs","compare_mod.rs","dropbox_api_token_with_oauth2_mod.rs","encrypt_decrypt_mod.rs","error_mod.rs","file_txt_mod.rs","lib.rs","local_disk_mod.rs","remote_dropbox_mod.rs","utils_mod.rs"]]],["dropbox_backup_to_external_disk_lib",["",[],["app_state_mod.rs","compare_mod.rs","error_mod.rs","file_txt_mod.rs","lib.rs","local_disk_mod.rs","remote_dropbox_mod.rs","utils_mod.rs"]]]]');
+//{"start":19,"fragment_lengths":[250,187]}
