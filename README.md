@@ -6,7 +6,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **Library project, one way sync from Dropbox to external disc**  
-***version: 2.1.133 date: 2025-09-28 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
+***version: 2.1.134 date: 2025-09-28 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
 
  ![dropbox](https://img.shields.io/badge/dropbox-orange)
  ![maintained](https://img.shields.io/badge/maintained-green)
@@ -15,7 +15,7 @@
 [//]: # (auto_cargo_toml_to_md end)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-2094-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-2100-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-288-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-248-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
@@ -140,21 +140,20 @@ winget install --id Microsoft.Powershell --source winget
 Now I have a separate terminal with PSVersion 7.4.0. It is not blue anymore, but black. Wow Microsoft!
 Incredible! They make it work! Unicode works with PowerShell in 2023. Heureka!
 
+## Development details
+
+Read the development details in a separate md file:
+[DEVELOPMENT.md](DEVELOPMENT.md)
+
+## Releases changelog
+
+Read the releases changelog in a separate md file:
+[RELEASES.md](RELEASES.md)
+
 ## TODO
 
-Can I recognize that a directory is moved or renamed? This is common and should be super fast.  
-If most of the files in the directory are equal it means, that it is moved/renamed.  
-Then a new `compare_files` will generate a new list if there are smaller differences.  
-Is there a limit in the api for file size bigger than 2GB? Why the program crashes without an error?
-Files with size 0 are not downloaded.
-Solve empty folders in the program.
-Make a command inside the program to save the oauth_token.  
-
-## Dropbox basic account (free) for testing
-
-I created a free basic account, so I can do testing and examples easily for this project.  
-
-Generated access token for testing: sl.xxx
+Testing with a free basic account with not too much files and folders.
+And code happily ever after...
 
 ## Open-source and free as a beer
 

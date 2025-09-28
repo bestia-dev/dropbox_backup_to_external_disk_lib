@@ -12,7 +12,7 @@ use uncased::UncasedStr;
 pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<()> {
     //add_just_downloaded_to_list_local(app_config);
     let base_path = FileTxt::open_for_read(&app_config.path_list_ext_disk_base_path)?.read_to_string()?;
-    let base_path = CrossPathBuf::new(&base_path).unwrap();
+    let base_path = CrossPathBuf::new(&base_path)?;
     compare_lists_internal(
         ui_tx,
         &base_path,
@@ -96,12 +96,8 @@ fn compare_lists_internal(
                 cursor_source += 1;
             } else {
                 // equal names, equal size, check date and later check content_hash
-                let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1])
-                    .expect("Bug: datetime must be correct")
-                    .into();
-                let destination_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_destination[1])
-                    .expect("Bug: datetime must be correct")
-                    .into();
+                let source_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_source[1])?.into();
+                let destination_modified_dt_utc: DateTime<Utc> = DateTime::parse_from_rfc3339(vec_line_destination[1])?.into();
                 // if date is more than 2 seconds different
                 // incredible, incredible, incredible. exFAT is a Microsoft disk format for external disks. It allows for 10ms resolution for LastWrite/modified datetime.
                 // But Microsoft in Win10 driver for exFAT uses only 2seconds resolution. Crazy! After 20 years of existence.
@@ -112,11 +108,11 @@ fn compare_lists_internal(
                     // /BestiaDev/github_backup_active/github_backup_private/obsidian_bestia_dev/.git/objects/1f/55b1a1662d4c06e1909f73877513bf38cc390e
                     // I can recognize them id the path contains '/.git/'
                     // I will use content_hash to be sure that these files are equal.
-                    let path_global_to_destination_file = base_path.join_relative(vec_line_destination[0]).unwrap();
+                    let path_global_to_destination_file = base_path.join_relative(vec_line_destination[0])?;
                     // get content_hash from destination file
                     let local_content_hash = format!(
                         "{:x}",
-                        DropboxContentHasher::hash_file(path_global_to_destination_file.to_path_buf_current_os()).unwrap()
+                        DropboxContentHasher::hash_file(path_global_to_destination_file.to_path_buf_current_os())?
                     );
 
                     // a simple rudimentary progress bar
@@ -125,7 +121,7 @@ fn compare_lists_internal(
                         print!(".");
                         // flush
                         use std::io::Write;
-                        std::io::stdout().flush().unwrap();
+                        std::io::stdout().flush()?;
                     }
                     i += 1;
 
@@ -250,7 +246,7 @@ pub fn add_just_downloaded_to_list_local(app_config: &'static AppConfig) {
 
 /// add lines from just_downloaded to list_local. Only before compare.
 fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, path_list_local_files: &str) {
-    let string_just_downloaded = fs::read_to_string(path_list_just_downloaded).unwrap();
+    let string_just_downloaded = fs::read_to_string(path_list_just_downloaded)?;
     if !string_just_downloaded.is_empty() {
         // it must be sorted, because downloads are multi-thread and not in sort order
         let string_sorted_just_downloaded = crate::sort_string_lines(&string_just_downloaded);
@@ -260,7 +256,7 @@ fn add_just_downloaded_to_list_local_internal(path_list_just_downloaded: &str, p
         println!("{}: {}", path_list_just_downloaded.split("/").collect::<Vec<&str>>()[1], vec_sorted_downloaded.len());
         unwrap!(fs::write(path_list_just_downloaded, &string_sorted_just_downloaded));
 
-        let string_local_files = fs::read_to_string(path_list_local_files).unwrap();
+        let string_local_files = fs::read_to_string(path_list_local_files)?;
         let mut vec_sorted_local: Vec<&str> = string_local_files.lines().collect();
 
         // loop the 2 lists and merge sorted

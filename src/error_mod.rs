@@ -58,6 +58,12 @@ pub enum Error {
     #[error(transparent)]
     Base64Error(#[from] base64ct::Error),
 
+    #[error(transparent)]
+    ThreadPoolBuildError(#[from] rayon::ThreadPoolBuildError),
+
+    #[error(transparent)]
+    SendStringError(#[from] std::sync::mpsc::SendError<std::string::String>),
+
     #[error("ErrorFromString: {0}")]
     ErrorFromString(String),
     #[error("ErrorFromStaticStr: {0}")]

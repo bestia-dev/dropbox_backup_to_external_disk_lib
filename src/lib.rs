@@ -51,8 +51,8 @@ pub fn all_list_remote_and_local(ext_disk_base_path: &str, app_config: &'static 
         list_local(&ext_disk_base_path, app_config);
     });
     // wait for both threads to finish
-    handle_1.join().unwrap();
-    handle_2.join().unwrap();
+    handle_1.join()?;
+    handle_2.join()?;
 
     println!("{}{}", at_line(20), *CLEAR_LINE);
 }

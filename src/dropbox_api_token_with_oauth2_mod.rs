@@ -146,7 +146,11 @@ pub fn dropbox_api_config_initialize() {
 /// The encrypted file has the same file name with the ".enc" extension.
 /// Returns access_token to use as bearer for api calls
 pub fn get_dropbox_secret_token(client_id: &str) -> Result<SecretString> {
-    let private_key_file_name = DROPBOX_API_CONFIG.get().unwrap().dropbox_api_private_key_file_name.to_string();
+    let private_key_file_name = DROPBOX_API_CONFIG
+        .get()
+        .ok_or_else(|| Error::ErrorFromStr("DROPBOX_API_CONFIG.get error"))?
+        .dropbox_api_private_key_file_name
+        .to_string();
     println!("  {YELLOW}Check if the ssh private key exists.{RESET}");
     let private_key_path_struct = ende::PathStructInSshFolder::new(private_key_file_name.clone())?;
     if !private_key_path_struct.exists() {
@@ -250,7 +254,7 @@ fn authentication_with_browser(client_id: &str) -> Result<SecretBox<SecretRespon
 
     // the access code could be sent to to the redirect_uri. But I don't know if that makes it easier for me.
     // Instead the user can just copy paste from the browser. I think it needs to be done just once.
-    let access_code = inquire::Password::new("").without_confirmation().prompt().unwrap();
+    let access_code = inquire::Password::new("").without_confirmation().prompt()?;
 
     // Step 4: Client sends authorization_code and code_verifier to /oauth2/token
     let params = [
@@ -264,8 +268,8 @@ fn authentication_with_browser(client_id: &str) -> Result<SecretBox<SecretRespon
         .post("https://api.dropbox.com/oauth2/token")
         .form(&params);
 
-    let response = request.send().unwrap();
-    let response_str = response.text().unwrap();
+    let response = request.send()?;
+    let response_str = response.text()?;
 
     /*
     response json
@@ -279,7 +283,7 @@ fn authentication_with_browser(client_id: &str) -> Result<SecretBox<SecretRespon
     }
     */
 
-    let secret_response_access_token: SecretResponseAccessToken = serde_json::from_str(&response_str).unwrap();
+    let secret_response_access_token: SecretResponseAccessToken = serde_json::from_str(&response_str)?;
 
     Ok(SecretBox::new(Box::new(secret_response_access_token)))
 }
@@ -308,9 +312,9 @@ fn refresh_tokens(client_id: &str, refresh_token: String) -> Result<SecretBox<Se
         .post("https://api.dropbox.com/oauth2/token")
         .form(&params);
 
-    let response = request.send().unwrap();
-    let response_str = response.text().unwrap();
-    let secret_response_refresh_token: SecretResponseRefreshToken = serde_json::from_str(&response_str).unwrap();
+    let response = request.send()?;
+    let response_str = response.text()?;
+    let secret_response_refresh_token: SecretResponseRefreshToken = serde_json::from_str(&response_str)?;
 
     Ok(SecretBox::new(Box::new(secret_response_refresh_token)))
 }

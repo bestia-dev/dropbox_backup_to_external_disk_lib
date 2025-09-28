@@ -20,5 +20,7 @@ The TODO section is part of the [README.md](https://github.com/bestia-dev/dropbo
 
 - Authorization::load()
 
+- no unwrap
+
 ## Version 0.0.1
 

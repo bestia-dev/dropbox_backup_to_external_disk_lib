@@ -71,7 +71,7 @@ pub fn list_local(
                     if last_send_ms.elapsed().as_millis() >= 100 {
                         println_to_ui_thread_with_thread_name(
                             &ui_tx,
-                            format!("{file_count}: {}", crate::shorten_string(str_path_wo_base, 80)),
+                            format!("{file_count}: {}", crate::shorten_string(str_path_wo_base, 80)?),
                             "L",
                         );
 
@@ -87,7 +87,7 @@ pub fn list_local(
                 if !str_path_wo_base.starts_with("0_backup_temp") {
                     use chrono::offset::Utc;
                     use chrono::DateTime;
-                    let datetime: DateTime<Utc> = metadata.modified().unwrap().into();
+                    let datetime: DateTime<Utc> = metadata.modified()?.into();
 
                     if metadata.permissions().readonly() {
                         readonly_files_string.push_str(&format!("{}\n", str_path_wo_base,));
@@ -176,8 +176,8 @@ pub fn change_time_files(
             let datetime = vec_line[1];
             let path_global_path = ext_disk_base_path.join_relative(path)?;
             println_to_ui_thread(&ui_tx, path_global_path.to_string());
-            let modified = filetime::FileTime::from_system_time(humantime::parse_rfc3339(datetime).unwrap());
-            filetime::set_file_mtime(path_global_path.to_path_buf_current_os(), modified).unwrap();
+            let modified = filetime::FileTime::from_system_time(humantime::parse_rfc3339(datetime)?);
+            filetime::set_file_mtime(path_global_path.to_path_buf_current_os(), modified)?;
         }
         file_list_for_change_time_files.empty()?;
     }
@@ -328,12 +328,8 @@ fn move_local_files_internal_by_name(
                 let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
                 let file_name_for_download = path_global_to_download.file_name()?;
 
-                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)
-                    .expect("Bug: datetime must be correct")
-                    .into();
-                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)
-                    .expect("Bug: datetime must be correct")
-                    .into();
+                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)?.into();
+                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)?.into();
                 if chrono::Duration::from(modified_for_trash_files - modified_for_download).abs() < chrono::Duration::seconds(2)
                     && size_for_trash_files == size_for_download
                     && file_name_for_trash_files == file_name_for_download
@@ -392,12 +388,8 @@ fn rename_local_files_internal_by_hash(
                 let remote_content_hash = split_line_for_download[3];
                 let path_global_to_download = ext_disk_base_path.join_relative(string_path_for_download)?;
 
-                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)
-                    .expect("Bug: datetime must be correct")
-                    .into();
-                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)
-                    .expect("Bug: datetime must be correct")
-                    .into();
+                let modified_for_trash_files: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_trash_files)?.into();
+                let modified_for_download: DateTime<Utc> = DateTime::parse_from_rfc3339(modified_for_download)?.into();
                 if chrono::Duration::from(modified_for_trash_files - modified_for_download).abs() < chrono::Duration::seconds(2)
                     && size_for_trash_files == size_for_download
                 {

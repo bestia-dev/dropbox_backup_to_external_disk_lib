@@ -588,7 +588,7 @@ dependencies = [
 
 [[package]]
 name = "dropbox_backup_to_external_disk_lib"
-version = "2.1.133"
+version = "2.1.134"
 dependencies = [
  "aes-gcm",
  "base64ct",

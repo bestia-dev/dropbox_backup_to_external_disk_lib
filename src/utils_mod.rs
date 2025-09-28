@@ -2,6 +2,7 @@
 
 //! A module with often used functions.
 
+use crate::error_mod::{Error, Result};
 use uncased::UncasedStr;
 
 // type alias for better expressing coder intention,
@@ -12,14 +13,16 @@ type ThreadName = String;
 ///
 /// It panics if there is a bug in the code. This is not a recoverable error.  
 pub fn println_to_ui_thread(ui_tx: &std::sync::mpsc::Sender<String>, string: String) {
-    ui_tx.send(string).expect("Error mpsc send");
+    ui_tx.send(string).expect("Inside closure cannot use ?. Error mpsc send");
 }
 
 /// Println_to_ui_thread_with_thread_name sends the string to ui thread and works similarly to println.  \
 ///
 /// It panics if there is a bug in the code. This is not a recoverable error.  
 pub fn println_to_ui_thread_with_thread_name(ui_tx: &std::sync::mpsc::Sender<(String, ThreadName)>, string: String, thread_name: &str) {
-    ui_tx.send((string, thread_name.to_string())).expect("Bug: mpsc send");
+    ui_tx
+        .send((string, thread_name.to_string()))
+        .expect("Inside closure cannot use ?. Bug: mpsc send");
 }
 /*
 use std::io::Read;
@@ -51,7 +54,7 @@ pub fn get_pos(hide_cursor_terminal: &mut termion::cursor::HideCursor<RawTermina
 
 /// when changing cursor position it is good to hide the cursor
 pub fn start_hide_cursor_terminal() -> termion::cursor::HideCursor<RawTerminal<Stdout>> {
-    let hide_cursor = termion::cursor::HideCursor::from(termion::raw::IntoRawMode::into_raw_mode(std::io::stdout()).unwrap());
+    let hide_cursor = termion::cursor::HideCursor::from(termion::raw::IntoRawMode::into_raw_mode(std::io::stdout())?);
     unwrap!(hide_cursor.suspend_raw_mode());
     // return
     hide_cursor
@@ -95,23 +98,23 @@ pub fn press_enter_to_continue_timeout_5_sec() {
         if passed > Duration::seconds(1) && count_seconds < 1 {
             count_seconds += 1;
             print!("4..");
-            hide_cursor_terminal.flush().unwrap();
-            //raw_stdout.lock().flush().unwrap();
+            hide_cursor_terminal.flush()?;
+            //raw_stdout.lock().flush()?;
         } else if passed > Duration::seconds(2) && count_seconds < 2 {
             count_seconds += 1;
             print!("3..");
-            hide_cursor_terminal.flush().unwrap();
-            //raw_stdout.lock().flush().unwrap();
+            hide_cursor_terminal.flush()?;
+            //raw_stdout.lock().flush()?;
         } else if passed > Duration::seconds(3) && count_seconds < 3 {
             count_seconds += 1;
             print!("2..");
-            hide_cursor_terminal.flush().unwrap();
-            //raw_stdout.lock().flush().unwrap();
+            hide_cursor_terminal.flush()?;
+            //raw_stdout.lock().flush()?;
         } else if passed > Duration::seconds(4) && count_seconds < 4 {
             count_seconds += 1;
             print!("1..");
-            hide_cursor_terminal.flush().unwrap();
-            //raw_stdout.lock().flush().unwrap();
+            hide_cursor_terminal.flush()?;
+            //raw_stdout.lock().flush()?;
         } else if passed > Duration::seconds(5) {
             print!("0",);
             break;
@@ -126,7 +129,7 @@ pub fn press_enter_to_continue_timeout_5_sec() {
     // This should end the loop and the thread waiting for stdin.
     drop(async_stdin_keys_receiver);
     print!("\x1B[6n");
-    hide_cursor_terminal.flush().unwrap();
+    hide_cursor_terminal.flush()?;
     // the thread will exit, but now the reply of our ansi code is written on the screen: ^[[48;25R
     // now I need to silently empty the stdin until R
     for x in std::io::stdin().keys() {
@@ -143,22 +146,26 @@ pub fn press_enter_to_continue_timeout_5_sec() {
  */
 
 /// Shorten path for screen to avoid word-wrap.  
-pub fn shorten_string(text: &str, x_max_char: u16) -> String {
+pub fn shorten_string(text: &str, x_max_char: u16) -> Result<String> {
     if text.chars().count() > x_max_char as usize {
         let x_half_in_char = (x_max_char / 2 - 2) as usize;
-        let pos1_in_bytes = byte_pos_from_chars(text, x_half_in_char);
-        let pos2_in_bytes = byte_pos_from_chars(text, text.chars().count() - x_half_in_char);
-        format!("{}...{}", &text[..pos1_in_bytes], &text[pos2_in_bytes..])
+        let pos1_in_bytes = byte_pos_from_chars(text, x_half_in_char)?;
+        let pos2_in_bytes = byte_pos_from_chars(text, text.chars().count() - x_half_in_char)?;
+        Ok(format!("{}...{}", &text[..pos1_in_bytes], &text[pos2_in_bytes..]))
     } else {
-        text.to_string()
+        Ok(text.to_string())
     }
 }
 
 /// It is used for substring, because string slice are counted in bytes and not chars.  \
 ///
 /// If we have multi-byte unicode characters we can get an error if the boundary is not on char boundary.  
-pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> usize {
-    text.char_indices().nth(char_pos).unwrap().0
+pub fn byte_pos_from_chars(text: &str, char_pos: usize) -> Result<usize> {
+    Ok(text
+        .char_indices()
+        .nth(char_pos)
+        .ok_or_else(|| Error::ErrorFromStr("char_indices().nth error"))?
+        .0)
 }
 
 /// Sort string lines case insensitive.  

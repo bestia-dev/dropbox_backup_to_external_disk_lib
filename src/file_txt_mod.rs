@@ -21,7 +21,7 @@ impl FileTxt {
     /// If file not exist, it creates it.
     pub fn open_for_read_and_write(path: &CrossPathBuf) -> std::io::Result<Self> {
         if !path.exists() {
-            std::fs::File::create(path.to_path_buf_current_os()).unwrap();
+            std::fs::File::create(path.to_path_buf_current_os())?;
         }
         let file = std::fs::File::options()
             .read(true)
@@ -60,7 +60,7 @@ impl FileTxt {
 
     /// Empty the file.
     pub fn empty(&mut self) -> std::io::Result<()> {
-        self.file_txt.set_len(0).unwrap();
+        self.file_txt.set_len(0)?;
         Ok(())
     }
 }

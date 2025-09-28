@@ -51,12 +51,13 @@ pub fn test_connection() -> Result<()> {
 pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization> {
     let client_id = crate::dropbox_api_token_with_oauth2_mod::DROPBOX_API_CONFIG
         .get()
-        .unwrap()
+        .ok_or_else(|| Error::ErrorFromStr("DROPBOX_API_CONFIG.get error"))?
         .client_id
         .to_string();
     let first_token = crate::dropbox_api_token_with_oauth2_mod::get_dropbox_secret_token(&client_id)?;
     // The special prefix 1& in Authorization::load() means that the rest of the parameter is the token
-    let access_token = dropbox_sdk::oauth2::Authorization::load(client_id, &format!("1&{}", first_token.expose_secret())).unwrap();
+    let access_token = dropbox_sdk::oauth2::Authorization::load(client_id, &format!("1&{}", first_token.expose_secret()))
+        .ok_or_else(|| Error::ErrorFromStr("Authorization::load error"))?;
     Ok(access_token)
 }
 
@@ -80,10 +81,7 @@ pub fn list_remote(
     let (folder_list_root, file_list_root) = list_remote_folder(&client, "/", 0, false, ui_tx.clone())?;
 
     // threadpool with 8 threads
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
-        .build()
-        .expect("Bug: rayon ThreadPoolBuilder");
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build()?;
     pool.scope({
         // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
         let mut folder_list_all = vec![];
@@ -108,13 +106,15 @@ pub fn list_remote(
                     let list_tx_move_to_closure = list_tx.clone();
                     // only the closure is actually spawned, because it is the return value of the block
                     move |_| {
-                        let thread_num = rayon::current_thread_index().expect("Bug: rayon current_thread_index") as ThreadNum;
+                        let thread_num = rayon::current_thread_index()
+                            .expect("Inside closure cannot use ?. Bug: rayon current_thread_index")
+                            as ThreadNum;
                         // catch propagated errors and communicate errors to user or developer
                         // spawned closure cannot propagate error with ?
                         match list_remote_folder(client_ref, &folder_path, thread_num, true, ui_tx_move_to_closure) {
-                            Ok(folder_list_and_file_list) => {
-                                list_tx_move_to_closure.send(folder_list_and_file_list).expect("Bug: mpsc send")
-                            }
+                            Ok(folder_list_and_file_list) => list_tx_move_to_closure
+                                .send(folder_list_and_file_list)
+                                .expect("Inside closure cannot use ?. Bug: mpsc send"),
                             Err(err) => println_to_ui_thread_with_thread_name(
                                 &ui_tx_move_to_closure_2,
                                 format!("Error in thread {err}"),
@@ -140,13 +140,13 @@ pub fn list_remote(
             let string_folder_list = crate::utils_mod::sort_list(folder_list_all);
             file_list_source_folders
                 .write_append_str(&string_folder_list)
-                .expect("Bug: file_list_source_folders must be writable");
+                .expect("Inside closure cannot use ?. Bug: file_list_source_folders must be writable");
 
             println_to_ui_thread_with_thread_name(&ui_tx, format!("Remote file count: {all_file_count}"), "R");
             let string_file_list = crate::utils_mod::sort_list(file_list_all);
             file_list_source_files
                 .write_append_str(&string_file_list)
-                .expect("Bug: file_list_source_files must be writable");
+                .expect("Inside closure cannot use ?. Bug: file_list_source_files must be writable");
 
             println_to_ui_thread_with_thread_name(
                 &ui_tx,
@@ -183,7 +183,7 @@ pub fn list_remote_folder(
                         if last_send_ms.elapsed().as_millis() >= 100 {
                             println_to_ui_thread_with_thread_name(
                                 &ui_tx,
-                                format!("Folder: {}", crate::shorten_string(folder_path, 80)),
+                                format!("Folder: {}", crate::shorten_string(folder_path, 80)?),
                                 &format!("R{thread_num}"),
                             );
                             last_send_ms = std::time::Instant::now();
@@ -201,7 +201,7 @@ pub fn list_remote_folder(
                             if last_send_ms.elapsed().as_millis() >= 100 {
                                 println_to_ui_thread_with_thread_name(
                                     &ui_tx,
-                                    format!("File: {}", crate::shorten_string(file_path, 80)),
+                                    format!("File: {}", crate::shorten_string(file_path, 80)?),
                                     &format!("R{thread_num}"),
                                 );
                                 last_send_ms = std::time::Instant::now();
@@ -211,7 +211,7 @@ pub fn list_remote_folder(
                                 file_path,
                                 entry.client_modified,
                                 entry.size,
-                                entry.content_hash.unwrap()
+                                entry.content_hash.ok_or_else(|| Error::ErrorFromStr("entry.content_hash None"))?
                             ));
                         }
                     }
@@ -361,20 +361,21 @@ fn download_from_vec(
     // channel for inter-thread communication to send messages that will be appended to files
     let (files_append_tx, files_append_rx) = std::sync::mpsc::channel();
     //8 threads to download in parallel
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(8).build()?;
     pool.scope(move |scoped| {
         for line_path_to_download in vec_list_for_download.iter() {
             // execute in 4 separate threads, or waits for a free thread from the pool
             scoped.spawn({
                 // Prepare variables to be moved/captured to the closure. All is isolated in a block scope.
                 let line: Vec<&str> = line_path_to_download.split("\t").collect();
-                let path_to_download = CrossPathBuf::new(line[0]).expect("Error handling inside closures is not good.");
+                let path_to_download =
+                    CrossPathBuf::new(line[0]).expect("Inside closure cannot use ?. Error handling inside closures is not good.");
                 let ui_tx_clone = ui_tx.clone();
                 let ui_tx_move_to_closure_2 = ui_tx.clone();
                 let files_append_tx_move_to_closure = files_append_tx.clone();
                 // only the closure is actually spawned, because it is the return value of the block
                 move |_| {
-                    let thread_num = rayon::current_thread_index().expect("Bug: thread num must exist.");
+                    let thread_num = rayon::current_thread_index().expect("Inside closure cannot use ?. Bug: thread num must exist.");
                     // catch propagated errors and communicate errors to user or developer
                     // spawned closure cannot propagate error with ?
                     match download_internal(
@@ -403,7 +404,7 @@ fn download_from_vec(
             if !just_downloaded.is_empty() {
                 file_list_just_downloaded
                     .write_append_str(&format!("{just_downloaded}\n"))
-                    .expect("Bug: file_list_just_downloaded must be writable.");
+                    .expect("Inside closure cannot use ?. Bug: file_list_just_downloaded must be writable.");
             }
         }
         // endregion: Receiver reads all msgs from the queue
@@ -444,15 +445,15 @@ fn download_internal(
         }
     }
 
-    let system_time_modified = humantime::parse_rfc3339(&modified_str).expect("Bug: parse_rfc3339 must succeed");
+    let system_time_modified = humantime::parse_rfc3339(&modified_str)?;
     // let modified = filetime::FileTime::from_system_time(system_time_modified);
 
     // files of size 0 cannot be downloaded. I will just create them empty, because download empty file causes error 416
     if metadata_size == 0 {
         if local_path.exists() {
-            std::fs::remove_file(local_path.to_path_buf_current_os()).expect("Bug: remove file must succeed");
+            std::fs::remove_file(local_path.to_path_buf_current_os())?;
         }
-        let _file = FileTxt::open_for_read_and_write(&local_path).expect("Bug: open_for_read_and_write must succeed.");
+        let _file = FileTxt::open_for_read_and_write(&local_path)?;
         println_to_ui_thread_with_thread_name(&ui_tx, local_path.to_string(), &thread_name);
     } else {
         let mut bytes_out = 0u64;
@@ -466,7 +467,7 @@ fn download_internal(
             .truncate(true)
             .write(true)
             .open(temp_local_path.to_path_buf_current_os())?;
-        file.set_modified(system_time_modified).unwrap();
+        file.set_modified(system_time_modified)?;
 
         // I will download to a temp folder and then move the file to the right folder only when the download is complete.
         'download: loop {
@@ -475,7 +476,7 @@ fn download_internal(
             let result = dropbox_sdk::files::download(client, &download_arg, Some(bytes_out), None);
             match result {
                 Ok(Ok(download_result)) => {
-                    let mut body = download_result.body.expect("Bug: body must exist");
+                    let mut body = download_result.body.ok_or_else(|| Error::ErrorFromStr("Bug: body must exist"))?;
                     loop {
                         // limit read to 1 MiB per loop iteration so we can output progress
                         // let mut input_chunk = (&mut body).take(1_048_576);
@@ -492,7 +493,7 @@ fn download_internal(
                                         "{:.01}% of {:.02} MB downloading {}",
                                         bytes_out as f64 / total as f64 * 100.,
                                         total as f64 / 1000000.,
-                                        crate::shorten_string(path_to_download.as_str(), 80)
+                                        crate::shorten_string(path_to_download.as_str(), 80)?
                                     );
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                                     just_downloaded = path_to_download.to_string();
@@ -500,7 +501,7 @@ fn download_internal(
                                     let string_to_print = format!(
                                         "{} MB downloaded {}",
                                         bytes_out as f64 / 1000000.,
-                                        crate::shorten_string(path_to_download.as_str(), 80)
+                                        crate::shorten_string(path_to_download.as_str(), 80)?
                                     );
                                     println_to_ui_thread_with_thread_name(&ui_tx, string_to_print, &thread_name);
                                 }
@@ -540,7 +541,7 @@ fn download_internal(
     // That receiver can append to files without worrying of other threads interfering.
     // So only a single thread can write to a file. That is then sure to be serial and never simultaneously (data race).
 
-    files_append_tx.send(just_downloaded).expect("Bug: mpsc send");
+    files_append_tx.send(just_downloaded)?;
 
     Ok(())
 }
