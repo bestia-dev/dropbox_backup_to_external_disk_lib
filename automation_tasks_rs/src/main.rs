@@ -203,7 +203,7 @@ fn task_commit_and_push(arg_2: Option<String>) {
     println!(
         r#"
   {YELLOW}After `cargo auto commit_and_push "message"`{RESET}
-{GREEN}cargo auto publish_to_crates_io{RESET}
+{GREEN}No more automation tasks.{RESET}
 "#
     );
 }
