@@ -2,7 +2,7 @@
 
 use crossplatform_path::CrossPathBuf;
 
-use crate::error_mod::DropboxBackupToExternalDiskError;
+use crate::error_mod::Result;
 
 #[derive(Debug)]
 pub struct AppConfig {
@@ -27,7 +27,7 @@ pub struct AppConfig {
 /// These methods will be available globally.  
 pub trait AppStateMethods: Sync + Send {
     /// get encrypted authorization token from env var
-    fn load_keys_from_io(&self) -> Result<(String, String), DropboxBackupToExternalDiskError>;
+    fn load_keys_from_io(&self) -> Result<(String, String)>;
     /// reference to app_config data
     fn ref_app_config(&self) -> &AppConfig;
     /// get locked Mutex

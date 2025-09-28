@@ -6,9 +6,11 @@
 //! Is the bin project that knows if it is CLI, TUI or GUI and it presents the errors to the user and developer.
 //! Then in the bin project I use the crate anyhow.
 
-/// List of possible errors from this library.
+/// dropbox_backup_to_external_disk_lib::Error
+///
+/// It is a list of all possible errors from this library.
 #[derive(thiserror::Error, Debug)]
-pub enum DropboxBackupToExternalDiskError {
+pub enum Error {
     #[error("VarError: {0}")]
     VarError(#[from] std::env::VarError),
 
@@ -39,7 +41,22 @@ pub enum DropboxBackupToExternalDiskError {
     TimestampError(#[from] humantime::TimestampError),
 
     #[error("CrossPlatformPathError: {0}")]
-    CrossPlatformPathError(#[from] crossplatform_path::LibraryError),
+    CrossPlatformPathError(#[from] crossplatform_path::Error),
+
+    #[error(transparent)]
+    ChronoParseError(#[from] chrono::ParseError),
+
+    #[error(transparent)]
+    ReqwestError(#[from] reqwest::Error),
+
+    #[error(transparent)]
+    SshKeyError(#[from] ssh_key::Error),
+
+    #[error(transparent)]
+    RsaSignatureError(#[from] rsa::signature::Error),
+
+    #[error(transparent)]
+    Base64Error(#[from] base64ct::Error),
 
     #[error("ErrorFromString: {0}")]
     ErrorFromString(String),
@@ -48,3 +65,9 @@ pub enum DropboxBackupToExternalDiskError {
     #[error("unknown error")]
     UnknownError,
 }
+
+/// dropbox_backup_to_external_disk_lib::Result
+///
+/// `dropbox_backup_to_External_disk_lib::Result` is used with one parameter.
+/// Instead of the regular Result with second parameter, that is always DropboxBackupToExternalDiskError.
+pub type Result<T, E = Error> = core::result::Result<T, E>;

@@ -18,5 +18,7 @@ The TODO section is part of the [README.md](https://github.com/bestia-dev/dropbo
 
 - move and rename
 
+- Authorization::load()
+
 ## Version 0.0.1
 

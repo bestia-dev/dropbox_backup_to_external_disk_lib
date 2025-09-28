@@ -4,6 +4,8 @@
 
 mod app_state_mod;
 mod compare_mod;
+mod dropbox_api_token_with_oauth2_mod;
+mod encrypt_decrypt_mod;
 mod error_mod;
 mod file_txt_mod;
 mod local_disk_mod;
@@ -13,7 +15,8 @@ mod utils_mod;
 // export public code to the bin project
 pub use crate::app_state_mod::{global_app_state, global_config, AppConfig, AppStateMethods, APP_STATE};
 pub use crate::compare_mod::{compare_files, compare_folders};
-pub use crate::error_mod::DropboxBackupToExternalDiskError;
+pub use crate::dropbox_api_token_with_oauth2_mod::dropbox_api_config_initialize;
+pub use crate::error_mod::{Error, Result};
 pub use crate::file_txt_mod::FileTxt;
 pub use crate::local_disk_mod::{
     change_time_files, create_folders, list_local, move_local_files, read_only_remove, rename_local_files, trash_files, trash_folders,

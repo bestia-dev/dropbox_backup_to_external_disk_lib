@@ -36,6 +36,7 @@
         "crossterm",
         "CRUSTDE",
         "datetime",
+        "dbid",
         "deps",
         "Deque",
         "ende",
@@ -48,6 +49,7 @@
         "hasher",
         "Heureka",
         "humantime",
+        "keygen",
         "mkdir",
         "nanos",
         "Nazdravlje",
@@ -55,6 +57,7 @@
         "newtype",
         "octocrab",
         "paypal",
+        "PKCE",
         "plantuml",
         "proba",
         "Prost",
@@ -77,9 +80,11 @@
         "thiserror",
         "threadpool",
         "unhide",
+        "Unpadded",
         "walkdir",
         "winget",
         "zcvf",
-        "zdravje"
+        "zdravje",
+        "zeroize"
     ]
 }

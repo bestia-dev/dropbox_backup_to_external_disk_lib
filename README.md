@@ -6,7 +6,7 @@
 [//]: # (auto_cargo_toml_to_md start)
 
 **Library project, one way sync from Dropbox to external disc**  
-***version: 2.1.126 date: 2025-09-26 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
+***version: 2.1.133 date: 2025-09-28 author: [bestia.dev](https://bestia.dev) repository: [GitHub](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)***
 
  ![dropbox](https://img.shields.io/badge/dropbox-orange)
  ![maintained](https://img.shields.io/badge/maintained-green)
@@ -15,9 +15,9 @@
 [//]: # (auto_cargo_toml_to_md end)
 
 [//]: # (auto_lines_of_code start)
-[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-1532-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-123-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
-[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-200-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Rust code](https://img.shields.io/badge/Lines_in_Rust-2094-green.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Doc comments](https://img.shields.io/badge/Lines_in_Doc_comments-288-blue.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
+[![Lines in Comments](https://img.shields.io/badge/Lines_in_comments-248-purple.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in examples](https://img.shields.io/badge/Lines_in_examples-0-yellow.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 [![Lines in tests](https://img.shields.io/badge/Lines_in_tests-0-orange.svg)](https://github.com/bestia-dev/dropbox_backup_to_external_disk_lib/)
 
@@ -55,7 +55,7 @@ I use [cargo-auto](https://crates.io/crates/cargo-auto) for automation tasks in 
 This is just a library project. There are projects for different user-interfaces that depend on this library. Compile and run them to test the application.  
 
 Then I use WSL2 (Debian) on Win10 to execute the compiled program.  
-The external disk path from WSL2 looks like this: `/mnt/d/DropBoxBackup1`.  
+The external disk path from WSL2 looks like this: `/mnt/d/DropboxBackup1`.  
 The CLI saves the list of the local files metadata in `tmp/list_destination_files.csv`.  
 And the list of the files metadata from the remote Dropbox to in `tmp/list_source_files.csv`.
 Tab delimited with metadata: path (with name), datetime modified, size.
@@ -72,7 +72,7 @@ With this files the CLI will:
 `trash_files` will move the obsolete files into a trash folder  
 `download_from_list` - this can take a lot of time and it can be stopped with ctrl+c
 
-## DropBox api2 - Stone sdk
+## Dropbox api2 - Stone sdk
 
 Dropbox has made a `Stone` thingy that contains all the API definition. From there is possible to generate code boilerplate for different languages for the api-client.  
 For Rust there is this quasi official project:  

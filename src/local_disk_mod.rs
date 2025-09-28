@@ -18,8 +18,9 @@ use uncased::UncasedStr;
 use unwrap::unwrap; */
 
 use crate::{
+    error_mod::{Error, Result},
     utils_mod::{println_to_ui_thread, println_to_ui_thread_with_thread_name},
-    DropboxBackupToExternalDiskError, FileTxt,
+    FileTxt,
 };
 
 /// The logic is in the LIB project, but all UI is in the CLI project.  \
@@ -32,7 +33,7 @@ pub fn list_local(
     mut file_list_destination_files: FileTxt,
     mut file_list_destination_folders: FileTxt,
     mut file_list_destination_readonly_files: FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_local_start = std::time::Instant::now();
 
     // empty the file. I want all or nothing result here if the process is terminated prematurely.
@@ -54,9 +55,7 @@ pub fn list_local(
         //let mut ns_started = ns_start("WalkDir entry start");
         let entry: walkdir::DirEntry = entry?;
         let path = entry.path();
-        let str_path = path
-            .to_str()
-            .ok_or_else(|| DropboxBackupToExternalDiskError::ErrorFromStr("Error string is not path"))?;
+        let str_path = path.to_str().ok_or_else(|| Error::ErrorFromStr("Error string is not path"))?;
         // I don't need the "base" folder in this list. The ext_disk_base_path always ends with slash.
         let str_path_wo_base = str_path.trim_start_matches(&ext_disk_base_path);
         // change windows style with backslash to Linux style with neutral crossplatform slash
@@ -138,7 +137,7 @@ pub fn read_only_remove(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_readonly_files: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_readonly_files = file_readonly_files.read_to_string()?;
     for string_path_for_readonly in list_readonly_files.lines() {
         let path_global_path_to_readonly = ext_disk_base_path.join_relative(string_path_for_readonly)?;
@@ -166,7 +165,7 @@ pub fn change_time_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_change_time_files: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_change_time_files = file_list_for_change_time_files.read_to_string()?;
     if list_for_change_time_files.is_empty() {
         println_to_ui_thread(&ui_tx, "list_for_change_time_files is empty".to_string());
@@ -190,7 +189,7 @@ pub fn create_folders(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_create_folders: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_create_folders = file_list_for_create_folders.read_to_string()?;
     if list_for_create_folders.is_empty() {
         println_to_ui_thread(&ui_tx, "list_for_create_folders is empty".to_string());
@@ -219,7 +218,7 @@ pub fn move_local_files(
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_files: &mut FileTxt,
     file_list_for_download: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
@@ -262,7 +261,7 @@ pub fn rename_local_files(
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_files: &mut FileTxt,
     file_list_for_download: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_trash: Vec<&str> = list_for_trash_files.lines().collect();
@@ -294,7 +293,7 @@ fn move_local_files_internal_by_name(
     ext_disk_base_path: &CrossPathBuf,
     vec_list_for_trash_files: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
@@ -361,7 +360,7 @@ fn rename_local_files_internal_by_hash(
     ext_disk_base_path: &CrossPathBuf,
     vec_list_for_trash_files: &mut Vec<&str>,
     vec_list_for_download: &mut Vec<&str>,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let mut count_moved = 0;
     // it is not possible to remove an element when iterating a Vec
     // I will iterate by a clone, so I can remove an element in the original Vec
@@ -430,7 +429,7 @@ fn move_internal(
     ui_tx: &std::sync::mpsc::Sender<String>,
     path_global_to_trash: &CrossPathBuf,
     path_global_for_download: &CrossPathBuf,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let move_from = path_global_to_trash;
     let move_to = path_global_for_download;
     println_to_ui_thread(ui_tx, format!("move {}  ->  {}", &move_from, &move_to));
@@ -466,7 +465,7 @@ pub fn trash_files(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_files: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_trash_files = file_list_for_trash_files.read_to_string()?;
     let mut vec_list_for_trash_files: Vec<&str> = list_for_trash_files.lines().collect();
 
@@ -491,10 +490,10 @@ fn trash_files_internal(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     vec_list_for_trash_files: &mut Vec<&str>,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let vec_list_for_trash_clone = vec_list_for_trash_files.clone();
     let now_string = chrono::Local::now().format("trash_%Y-%m-%d_%H-%M-%S").to_string();
-    // the trash folder will be inside DropBoxBackup because of permissions
+    // the trash folder will be inside DropboxBackup because of permissions
     let base_trash_path = ext_disk_base_path.join_relative("0_backup_temp")?.join_relative(&now_string)?;
     base_trash_path.create_dir_all()?;
     //move the files in the same directory structure
@@ -519,7 +518,7 @@ pub fn trash_folders(
     ui_tx: std::sync::mpsc::Sender<String>,
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_trash_folders: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_trash_folders = file_list_for_trash_folders.read_to_string()?;
     let mut vec_list_for_trash_folders: Vec<&str> = list_for_trash_folders.lines().collect();
     let vec_list_for_trash_clone = vec_list_for_trash_folders.clone();

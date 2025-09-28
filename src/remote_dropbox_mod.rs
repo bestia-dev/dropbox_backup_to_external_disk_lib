@@ -5,9 +5,10 @@
 //! It uses LibError to return error text to the UI thread.
 
 use crossplatform_path::CrossPathBuf;
+use secrecy::ExposeSecret;
 
-use crate::app_state_mod::APP_STATE;
-use crate::error_mod::DropboxBackupToExternalDiskError;
+use crate::error_mod::Error;
+use crate::error_mod::Result;
 use crate::utils_mod::println_to_ui_thread_with_thread_name;
 use crate::FileTxt;
 
@@ -25,7 +26,7 @@ type TokenEnc = String;
 ///
 /// But it is bad practice to store anything as plain text. I will encode it and store it in env var.  \
 /// This is more like an obfuscation tactic to make it harder, but in no way impossible, to find out the secret.  
-pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), DropboxBackupToExternalDiskError> {
+pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc)> {
     // every time, the master key will be random and temporary
     // TODO: fernet is using OpenSSL and that cannot be cross-compile to windows
     // TODO: use some other method of encryption. For now no encryption at all.
@@ -38,24 +39,25 @@ pub fn encode_token(token: String) -> Result<(MasterKey, TokenEnc), DropboxBacku
 /// Test authentication with dropbox.com.  \
 ///
 /// Experiment with sending function pointer.  
-pub fn test_connection() -> Result<(), DropboxBackupToExternalDiskError> {
+pub fn test_connection() -> Result<()> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     (dropbox_sdk::files::list_folder(&client, &dropbox_sdk::files::ListFolderArg::new("".to_string()))?)?;
+
     Ok(())
 }
 
 /// Read encoded token (from env), decode and return the authorization token.  
-pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization, DropboxBackupToExternalDiskError> {
-    // the global APP_STATE method reads encoded tokens from env var
-    let (_master_key, token_enc) = APP_STATE.get().expect("Bug: OnceCell").load_keys_from_io()?;
-    // TODO: decrypt with fernet was using OpenSSL, that cannot be cross-compiled. Use some other encryption method.
-    // TODO: for now just don't encrypt
-    let token = token_enc;
-    // return
-    // from_long_lived_access_token() is deprecated, but it still works, just it does not live long.
-    // TODO: change to OAuth2
-    Ok(dropbox_sdk::oauth2::Authorization::from_long_lived_access_token(token))
+pub fn get_authorization_token() -> Result<dropbox_sdk::oauth2::Authorization> {
+    let client_id = crate::dropbox_api_token_with_oauth2_mod::DROPBOX_API_CONFIG
+        .get()
+        .unwrap()
+        .client_id
+        .to_string();
+    let first_token = crate::dropbox_api_token_with_oauth2_mod::get_dropbox_secret_token(&client_id)?;
+    // The special prefix 1& in Authorization::load() means that the rest of the parameter is the token
+    let access_token = dropbox_sdk::oauth2::Authorization::load(client_id, &format!("1&{}", first_token.expose_secret())).unwrap();
+    Ok(access_token)
 }
 
 /// Get remote list in parallel.  \
@@ -65,7 +67,7 @@ pub fn list_remote(
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
     mut file_list_source_files: FileTxt,
     mut file_list_source_folders: FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_remote_start = std::time::Instant::now();
     // empty the files. I want all or nothing result here if the process is terminated prematurely.
     file_list_source_files.empty()?;
@@ -164,7 +166,7 @@ pub fn list_remote_folder(
     thread_num: ThreadNum,
     recursive: bool,
     ui_tx: std::sync::mpsc::Sender<(String, ThreadName)>,
-) -> Result<FolderListAndFileList, DropboxBackupToExternalDiskError> {
+) -> Result<FolderListAndFileList> {
     let mut folder_list: FolderList = vec![];
     let mut file_list: FileList = vec![];
     let mut last_send_ms = std::time::Instant::now();
@@ -214,31 +216,23 @@ pub fn list_remote_folder(
                         }
                     }
                     Ok(Ok(dropbox_sdk::files::Metadata::Deleted(_entry))) => {
-                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
-                            "R{thread_num} Error unexpected deleted entry"
-                        )));
+                        return Err(Error::ErrorFromString(format!("R{thread_num} Error unexpected deleted entry")));
                     }
                     Ok(Err(e)) => {
-                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
+                        return Err(Error::ErrorFromString(format!(
                             "R{thread_num} Error from files/list_folder_continue: {e}"
                         )));
                     }
                     Err(e) => {
-                        return Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
-                            "R{thread_num} Error API request: {e}"
-                        )));
+                        return Err(Error::ErrorFromString(format!("R{thread_num} Error API request: {e}")));
                     }
                 }
             }
             // return FolderListAndFileList
             Ok((folder_list, file_list))
         }
-        Ok(Err(e)) => Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
-            "R{thread_num} Error from files/list_folder: {e}"
-        ))),
-        Err(e) => Err(DropboxBackupToExternalDiskError::ErrorFromString(format!(
-            "R{thread_num} Error API request: {e}"
-        ))),
+        Ok(Err(e)) => Err(Error::ErrorFromString(format!("R{thread_num} Error from files/list_folder: {e}"))),
+        Err(e) => Err(Error::ErrorFromString(format!("R{thread_num} Error API request: {e}"))),
     }
 }
 
@@ -316,7 +310,7 @@ pub fn download_one_file(
     ext_disk_base_path: &CrossPathBuf,
     path_to_download: &CrossPathBuf,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let path_str = path_to_download.to_string();
     let mut vec_list_for_download: Vec<&str> = vec![&path_str];
     download_from_vec(ui_tx, ext_disk_base_path, &mut vec_list_for_download, file_list_just_downloaded)?;
@@ -332,7 +326,7 @@ pub fn download_from_list(
     ext_disk_base_path: &CrossPathBuf,
     file_list_for_download: &mut FileTxt,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let list_for_download = file_list_for_download.read_to_string()?;
     let mut vec_list_for_download: Vec<&str> = list_for_download.lines().collect();
 
@@ -359,7 +353,7 @@ fn download_from_vec(
     ext_disk_base_path: &CrossPathBuf,
     vec_list_for_download: &mut Vec<&str>,
     file_list_just_downloaded: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let token = get_authorization_token()?;
     let client = dropbox_sdk::default_client::UserAuthDefaultClient::new(token);
     // I have to create a reference before the move-closure. So the reference is moved to the closure and not the object.
@@ -426,7 +420,7 @@ fn download_internal(
     thread_num: i32,
     path_to_download: &CrossPathBuf,
     files_append_tx: std::sync::mpsc::Sender<String>,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let thread_name = format!("R{thread_num}");
     // add a leading slash to path_to_download because the dropbox_sdk needs it
     let path_to_download = path_to_download.add_start_slash()?;
@@ -446,7 +440,7 @@ fn download_internal(
             metadata_size = metadata.size;
         }
         _ => {
-            return Err(DropboxBackupToExternalDiskError::ErrorFromStr("This is not a file on Dropbox"));
+            return Err(Error::ErrorFromStr("This is not a file on Dropbox"));
         }
     }
 

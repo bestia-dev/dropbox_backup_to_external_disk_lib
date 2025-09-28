@@ -1,6 +1,7 @@
 // compare_mod.rs
 
-use crate::{utils_mod::println_to_ui_thread, DropboxBackupToExternalDiskError, FileTxt};
+use crate::error_mod::Result;
+use crate::{utils_mod::println_to_ui_thread, FileTxt};
 use chrono::{DateTime, Utc};
 use crossplatform_path::CrossPathBuf;
 #[allow(unused_imports)]
@@ -8,10 +9,7 @@ use dropbox_content_hasher::DropboxContentHasher;
 use uncased::UncasedStr;
 
 /// Compare list: the lists and produce list_for_download, list_for_trash_files.  
-pub fn compare_files(
-    ui_tx: std::sync::mpsc::Sender<String>,
-    app_config: &'static crate::AppConfig,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+pub fn compare_files(ui_tx: std::sync::mpsc::Sender<String>, app_config: &'static crate::AppConfig) -> Result<()> {
     //add_just_downloaded_to_list_local(app_config);
     let base_path = FileTxt::open_for_read(&app_config.path_list_ext_disk_base_path)?.read_to_string()?;
     let base_path = CrossPathBuf::new(&base_path).unwrap();
@@ -36,7 +34,7 @@ fn compare_lists_internal(
     path_list_for_download: &CrossPathBuf,
     path_list_for_trash: &CrossPathBuf,
     path_list_for_change_time_files: &CrossPathBuf,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let file_list_source_files = FileTxt::open_for_read(path_list_source_files)?;
     let string_list_source_files = file_list_source_files.read_to_string()?;
     let vec_list_source_files: Vec<&str> = string_list_source_files.lines().collect();
@@ -109,8 +107,8 @@ fn compare_lists_internal(
                 // But Microsoft in Win10 driver for exFAT uses only 2seconds resolution. Crazy! After 20 years of existence.
                 // this means that if the time difference is less then 2 seconds, they are probably the same file
                 if chrono::Duration::from(source_modified_dt_utc - destination_modified_dt_utc).abs() > chrono::Duration::seconds(2) {
-                    // 2025-09-21 another strange behavior: for some git object files the modified date is different on my local disk and on DropBox
-                    // I don't know why is that, but I have 5000 of these files small and large. I suppose the content is equal therefor DropBox does not sync them.
+                    // 2025-09-21 another strange behavior: for some git object files the modified date is different on my local disk and on Dropbox
+                    // I don't know why is that, but I have 5000 of these files small and large. I suppose the content is equal therefor Dropbox does not sync them.
                     // /BestiaDev/github_backup_active/github_backup_private/obsidian_bestia_dev/.git/objects/1f/55b1a1662d4c06e1909f73877513bf38cc390e
                     // I can recognize them id the path contains '/.git/'
                     // I will use content_hash to be sure that these files are equal.
@@ -187,7 +185,7 @@ pub fn compare_folders(
     string_list_destination_folders: &str,
     file_list_for_trash_folders: &mut FileTxt,
     file_list_for_create_folders: &mut FileTxt,
-) -> Result<(), DropboxBackupToExternalDiskError> {
+) -> Result<()> {
     let vec_list_source_folders: Vec<&str> = string_list_source_folders.lines().collect();
     let vec_list_destination_folders: Vec<&str> = string_list_destination_folders.lines().collect();
 

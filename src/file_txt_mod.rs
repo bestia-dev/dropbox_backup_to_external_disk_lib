@@ -40,7 +40,7 @@ impl FileTxt {
     }
 
     /// Returns the final component of the Path, if there is one.
-    pub fn file_name(&self) -> Result<String, crossplatform_path::LibraryError> {
+    pub fn file_name(&self) -> crossplatform_path::Result<String> {
         self.file_path.file_name()
     }
 
@@ -48,7 +48,7 @@ impl FileTxt {
     ///
     /// So is possible to open a File in the bin part of the project and then pass it to the lib part of project.  \
     /// All input and output should be in the bin part of project and not in the lib.  
-    pub fn read_to_string(&self) -> Result<String, crossplatform_path::LibraryError> {
+    pub fn read_to_string(&self) -> crossplatform_path::Result<String> {
         self.file_path.read_to_string()
     }
 
