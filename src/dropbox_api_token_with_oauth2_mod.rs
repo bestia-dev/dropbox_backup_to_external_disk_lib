@@ -112,18 +112,7 @@ pub static DROPBOX_API_CONFIG: std::sync::OnceLock<DropboxApiConfig> = std::sync
 struct SecretResponseAccessToken {
     access_token: String,
     expires_in: i64,
-    refresh_token: String,
-    token_type: String,
-    uid: String,
-    account_id: String,
-    scope: String,
-}
-
-#[derive(serde::Deserialize, serde::Serialize, zeroize::Zeroize, zeroize::ZeroizeOnDrop, Debug)]
-struct SecretResponseRefreshToken {
-    access_token: String,
-    expires_in: i64,
-    token_type: String,
+    refresh_token: Option<String>,
 }
 
 /// Application state (static) is initialized only once in the main() function.
@@ -189,21 +178,23 @@ pub fn get_dropbox_secret_token(client_id: &str) -> Result<SecretString> {
         if access_token_expiration <= utc_now {
             println!("{RED}Access token has expired, use refresh token{RESET}");
             let secret_decrypted_from_file = decrypt_text_with_metadata(encrypted_text_with_metadata)?;
-            let secret_response_refresh_token: SecretBox<SecretResponseRefreshToken> =
-                refresh_tokens(client_id, secret_decrypted_from_file.expose_secret().refresh_token.clone())?;
+            let secret_response_access_token: SecretBox<SecretResponseAccessToken> = refresh_tokens(
+                client_id,
+                secret_decrypted_from_file
+                    .expose_secret()
+                    .refresh_token
+                    .clone()
+                    .ok_or_else(|| Error::ErrorFromStr("refresh_token is None"))?,
+            )?;
 
-            let secret_access_token = SecretString::from(secret_response_refresh_token.expose_secret().access_token.to_string());
-            let expires_in = secret_response_refresh_token.expose_secret().expires_in;
+            let secret_access_token = SecretString::from(secret_response_access_token.expose_secret().access_token.to_string());
+            let expires_in = secret_response_access_token.expose_secret().expires_in;
 
-            // create new secret_response_access_token, because the response of refresh does not have all the fields
+            // create new secret_response_access_token, because the response of refresh does not have the refresh_token
             let secret_response_access_token = SecretResponseAccessToken {
                 access_token: secret_access_token.expose_secret().to_string(),
-                account_id: "".to_string(),
                 expires_in,
                 refresh_token: secret_decrypted_from_file.expose_secret().refresh_token.clone(),
-                scope: "".to_string(),
-                token_type: "".to_string(),
-                uid: "".to_string(),
             };
             let secret_response_access_token = SecretBox::new(Box::new(secret_response_access_token));
 
@@ -276,10 +267,7 @@ fn authentication_with_browser(client_id: &str) -> Result<SecretBox<SecretRespon
     {
     "access_token": "NW7lYmEWHgUAAAAAAAAAAbeutI8iL5CuBik9_CPD5r83XvcQPt-7O5diOdUUcsuX",
     "expires_in": 14399,
-    "token_type": "bearer",
-    "uid": "2589992144",
-    "account_id": "dbid:AABuX9g9fD88U8z6tXxu7rcVSo64ADcrWnBMk",
-    "scope": "account_info.read contacts.write file_requests.read file_requests.write files.content.read files.content.write files.metadata.read files.metadata.write"
+    "refresh_token": "xxxx",
     }
     */
 
@@ -289,7 +277,7 @@ fn authentication_with_browser(client_id: &str) -> Result<SecretBox<SecretRespon
 }
 
 /// use refresh token to get new access_token and refresh_token
-fn refresh_tokens(client_id: &str, refresh_token: String) -> Result<SecretBox<SecretResponseRefreshToken>> {
+fn refresh_tokens(client_id: &str, refresh_token: String) -> Result<SecretBox<SecretResponseAccessToken>> {
     // https://developers.dropbox.com/oauth-guide#implementing-oauth
 
     #[derive(serde::Serialize)]
@@ -314,7 +302,7 @@ fn refresh_tokens(client_id: &str, refresh_token: String) -> Result<SecretBox<Se
 
     let response = request.send()?;
     let response_str = response.text()?;
-    let secret_response_refresh_token: SecretResponseRefreshToken = serde_json::from_str(&response_str)?;
+    let secret_response_refresh_token: SecretResponseAccessToken = serde_json::from_str(&response_str)?;
 
     Ok(SecretBox::new(Box::new(secret_response_refresh_token)))
 }
